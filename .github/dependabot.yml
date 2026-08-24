@@ -52,8 +52,15 @@ updates:
     directory: "/docs/site"
     schedule:
       interval: "weekly"
+    # 1 day here, not the 7 used by the other ecosystems. Dependabot maps
+    # cooldown onto pnpm's minimumReleaseAge, and pnpm treats it as a hard
+    # resolution failure rather than falling back to an older version -- so a
+    # single TRANSITIVE dep published inside the window fails the whole update
+    # (ERR_PNPM_NO_MATURE_MATCHING_VERSION). The Next/fumadocs tree moves fast
+    # enough that a 7-day window broke most runs. 1 day still enforces the
+    # 24-hour publish delay the house standard asks for.
     cooldown:
-      default-days: 7
+      default-days: 1
     commit-message:
       prefix: "chore(deps)"
     ignore:
