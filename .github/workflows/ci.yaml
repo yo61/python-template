@@ -1,0 +1,106 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d  # v10.0.1
+        with:
+          python-version: "3.13"
+          enable-cache: true
+          # Distinguishes this job's cache key from pytest (py3.13)'s. Without
+          # it both race on the same key and one fails to save.
+          cache-suffix: lint
+      # The ruff and ty hooks are `uv run --no-sync`, so the venv must exist
+      # before prek runs.
+      - run: uv sync --frozen
+      # Runs the hooks from .pre-commit-config.yaml rather than repeating them
+      # here, so local and CI cannot drift. zizmor is skipped: it has its own
+      # job below, which the ruleset requires by name.
+      - uses: j178/prek-action@4e14d07f9231acabce116ccfca13b13dd9755ece  # v3.0.0
+        env:
+          SKIP: zizmor
+
+  pytest:
+    name: pytest (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d  # v10.0.1
+        with:
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+      - run: uv sync --frozen
+      - run: uv run pytest -q
+
+  # Aggregator. The branch ruleset requires this exact check name, so the
+  # matrix can grow without touching branch protection.
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    needs: [lint, pytest]
+    if: always()
+    steps:
+      - name: aggregate
+        env:
+          LINT: ${{ needs.lint.result }}
+          PYTEST: ${{ needs.pytest.result }}
+        run: |
+          set -euo pipefail
+          if [[ "$LINT" != "success" || "$PYTEST" != "success" ]]; then
+            echo "lint=$LINT pytest=$PYTEST"
+            exit 1
+          fi
+          echo "lint and pytest matrix all green"
+
+  commitlint:
+    name: commitlint
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      # Fork of wagoid/commitlint-github-action. Upstream is dead: last commit
+      # 2025-01-14, no releases, and it pins @commitlint/ensure ^19 -- which
+      # predates the exemption for long lines containing a URL added in v20, so
+      # Dependabot's markdown-link bodies fail body-max-line-length on it.
+      # This fork runs commitlint v21 on node 24 and pins its runtime image by
+      # digest, so pinning by SHA here cannot be worked around.
+      - uses: yo61/commitlint-github-action@501ff7bb31eb7133c871318c877d0e43cd1ff500  # v6.3.1
+        with:
+          configFile: commitlint.config.mjs
+
+  zizmor:
+    name: zizmor
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: zizmorcore/zizmor-action@3dc1ecc9bcb9e94e9b2c709687979e1298497054  # v0.6.2
+        with:
+          advanced-security: false
+          persona: regular
+          version: v1.29.0
