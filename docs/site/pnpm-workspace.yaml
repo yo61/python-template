@@ -1,0 +1,22 @@
+allowBuilds:
+  esbuild: true
+  sharp: true
+
+overrides:
+  # A transitive dep resolves postcss 8.4.31 (GHSA-qx2v-qp2m-jg93);
+  # pull it to the patched 8.5.10+.
+  postcss@<8.5.10: ^8.5.10
+  # sharp is an unused optional dep of Next (static export +
+  # images.unoptimized disables the only consumer); force past
+  # GHSA-f88m-g3jw-g9cj. Next declares ^0.34.5, so this overrides it.
+  sharp@<0.35.0: ^0.35.0
+  # brace-expansion (via minimatch@3) is vulnerable to a DoS from
+  # unbounded expansion. The 5.0.8 pin covered GHSA-mh99-v99m-4gvg,
+  # but GHSA-rgw5-rvv9-x895 bypasses that mitigation via unbounded
+  # intermediate arrays; 5.0.9 is the fix. Still a CommonJS build, so
+  # minimatch's require() resolves.
+  brace-expansion@<5.0.9: ^5.0.9
+  # fast-uri (via ajv, under serve) treats a backslash as an authority
+  # introducer, allowing host confusion (GHSA-7p8r-x3mc-p8w7); 3.1.5
+  # is the fix for the 3.x line that ajv resolves.
+  fast-uri@<3.1.5: ^3.1.5
