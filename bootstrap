@@ -167,12 +167,18 @@ description = os.environ["DESCRIPTION"]
 cli = os.environ["CLI_NAME"]
 
 
-def cut(text, start, end, what):
-    """Drop [start, end) from text, or die naming the anchor that moved."""
+def cut(text, start, end, last_line, what):
+    """Drop [start, end) from text, or die naming the anchor that moved.
+
+    last_line pins the far edge: without it, a job inserted between the two
+    anchors would be deleted along with the intended span, silently.
+    """
     i = text.find(start)
     j = text.find(end, i + len(start)) if i != -1 else -1
     if i == -1 or j == -1:
         raise SystemExit(f"bootstrap: anchor moved, cannot remove {what}")
+    if not text[i:j].rstrip("\n").endswith(last_line):
+        raise SystemExit(f"bootstrap: {what} no longer ends at {last_line!r}")
     return text[:i] + text[j:]
 
 
@@ -188,6 +194,7 @@ ci = cut(
     ci,
     "  bootstrap:\n    name: bootstrap\n",
     "  # Aggregator.",
+    "      - run: ./scripts/test-bootstrap.sh",
     "the bootstrap job",
 )
 ci = sub(
