@@ -1,0 +1,101 @@
+---
+title: Add DDD layers
+description: Split the package into layers and enforce the boundaries with import-linter
+---
+
+## Goal
+
+Turn the flat `commands/` package into explicit DDD layers, and make the
+layering a build failure rather than a convention people remember.
+
+Skip this until you have real domain logic. Four near-empty packages buy
+nothing.
+
+## Prerequisites
+
+- `import-linter` in the dev group: `uv add --dev 'import-linter>=2'`
+
+## Steps
+
+### Create the layer packages
+
+```bash
+mkdir -p src/pythontemplate/{application,domain,infrastructure}
+touch src/pythontemplate/{application,domain,infrastructure}/__init__.py
+```
+
+- `commands/` — CLI verbs; parse input, call application, print output
+- `application/` — use-cases; orchestrate domain objects
+- `domain/` — entities, value objects, business rules. No I/O, no framework
+- `infrastructure/` — persistence and external clients
+
+### Uncomment the contract
+
+`pyproject.toml` ships the block commented out:
+
+```toml
+[tool.importlinter]
+root_package = "pythontemplate"
+
+[[tool.importlinter.contracts]]
+name = "DDD layers"
+type = "layers"
+layers = [
+    "pythontemplate.commands",
+    "pythontemplate.application",
+    "pythontemplate.domain",
+]
+```
+
+Higher may import lower, never the reverse.
+
+### Wire it into the gate
+
+Add to `Taskfile.yml`:
+
+```yaml
+  dev:imports:
+    desc: Enforce import boundaries (import-linter)
+    cmds:
+      - uv run lint-imports
+```
+
+Add `- task: dev:imports` to `dev:check`, and a matching local prek hook next
+to the ruff and ty ones:
+
+```yaml
+      - id: import-linter
+        name: import-linter
+        entry: uv run --no-sync lint-imports
+        language: system
+        types: [python]
+        pass_filenames: false
+```
+
+### Verify
+
+```bash
+task dev:imports
+```
+
+## Notes
+
+### `cli` must stay out of the layers list
+
+`cli._build_app()` imports every command module lazily. import-linter parses
+the AST for imports at **any** depth, so a function-scoped import counts
+exactly like a top-level one — it will report the violation with the line
+number inside the function body.
+
+There is no way to exempt a lazy import from a contract. Leaving `cli` out of
+the `layers` list is the only lever, and it is what `unifictl` does.
+
+### Do not blanket-forbid infrastructure → domain
+
+`unifictl` also declares that `infrastructure` may import neither `domain` nor
+`application`, because there `infrastructure` is an isolated private-API client
+mirroring an external contract.
+
+That is not a general rule. If `infrastructure` holds your repositories, it
+*must* import the entities it persists — that is what a repository is. Adopting
+the contract blindly produces violations that are not defects.
