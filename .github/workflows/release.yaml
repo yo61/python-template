@@ -1,0 +1,154 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+permissions: {}
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    if: github.repository_owner == 'yo61'
+    permissions:
+      contents: read
+    outputs:
+      release_created: ${{ steps.rp.outputs.release_created }}
+      tag_name: ${{ steps.rp.outputs.tag_name }}
+      prs: ${{ steps.rp.outputs.prs }}
+    steps:
+      # Mint a short-lived App token so the Release PR is authored by the App
+      # rather than github-actions[bot]. PRs opened with the default
+      # GITHUB_TOKEN do not fire `pull_request` workflows (GitHub's
+      # loop-prevention policy), so the PR would have no checks and branch
+      # protection would block the merge.
+      - id: create_token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
+        with:
+          client-id: ${{ secrets.SEMANTIC_RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.SEMANTIC_RELEASE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-pull-requests: write
+      - uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7  # v5.0.0
+        id: rp
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+          token: ${{ steps.create_token.outputs.token }}
+
+  sync-lockfile:
+    needs: release-please
+    if: needs.release-please.outputs.prs && needs.release-please.outputs.prs != '[]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - id: create_token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
+        with:
+          client-id: ${{ secrets.SEMANTIC_RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.SEMANTIC_RELEASE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+      - id: pr_branch
+        env:
+          PRS_JSON: ${{ needs.release-please.outputs.prs }}
+        run: |
+          set -euo pipefail
+          branch=$(printf '%s' "$PRS_JSON" | jq -r '.[0].headBranchName')
+          if [[ -z "$branch" || "$branch" == "null" ]]; then
+            echo "release-please did not report a head branch; skipping" >&2
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "branch=$branch" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.pr_branch.outputs.skip != 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ steps.pr_branch.outputs.branch }}
+          token: ${{ steps.create_token.outputs.token }}
+          persist-credentials: true
+      - if: steps.pr_branch.outputs.skip != 'true'
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d  # v10.0.1
+        with:
+          python-version: "3.13"
+          enable-cache: false
+      - if: steps.pr_branch.outputs.skip != 'true'
+        name: Sync uv.lock and commit (signed) if changed
+        env:
+          UV_FROZEN: "0"
+          GH_TOKEN: ${{ steps.create_token.outputs.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          BRANCH: ${{ steps.pr_branch.outputs.branch }}
+        # Uses the GraphQL createCommitOnBranch mutation, not git commit/push.
+        # Commits made via the API on an App's behalf are signed by GitHub's
+        # app-flow key, which the required_signatures ruleset on main demands;
+        # a plain git commit from the runner is unsigned and blocks the PR.
+        run: |
+          set -euo pipefail
+          uv lock
+          if [[ -z "$(git status --porcelain uv.lock)" ]]; then
+            echo "uv.lock already in sync"
+            exit 0
+          fi
+          head_sha=$(git rev-parse HEAD)
+          base64 -w0 < uv.lock > /tmp/uv.lock.b64
+          # Request built with jq --rawfile and submitted via --input. Two
+          # failure modes this avoids:
+          #   1. Inline `-f content=$b64` exceeds MAX_ARG_STRLEN (128KB per
+          #      arg) once uv.lock passes ~95KB (E2BIG / exit 126).
+          #   2. `-f content=@/tmp/file` does NOT work -- gh's @filename
+          #      expansion does not apply to graphql variables; it sends the
+          #      literal path and the server rejects "Invalid Base64".
+          # shellcheck disable=SC2016 # jq references, not shell expansions.
+          query='mutation($repo: String!, $branch: String!, $sha: GitObjectID!, $content: Base64String!) {
+            createCommitOnBranch(input: {
+              branch: { repositoryNameWithOwner: $repo, branchName: $branch },
+              message: { headline: "chore: sync uv.lock with version bump" },
+              expectedHeadOid: $sha,
+              fileChanges: { additions: [{ path: "uv.lock", contents: $content }] }
+            }) {
+              commit { url }
+            }
+          }'
+          jq -n \
+            --arg query "$query" \
+            --arg repo "$GITHUB_REPOSITORY" \
+            --arg branch "$BRANCH" \
+            --arg sha "$head_sha" \
+            --rawfile content /tmp/uv.lock.b64 \
+            '{
+              query: $query,
+              variables: {
+                repo: $repo,
+                branch: $branch,
+                sha: $sha,
+                content: ($content | rtrimstr("\n"))
+              }
+            }' > /tmp/graphql.json
+          gh api graphql --input /tmp/graphql.json
+
+  publish:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/python-template
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d  # v10.0.1
+        with:
+          python-version: "3.13"
+          enable-cache: false
+      - run: uv build
+      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33  # v1.14.2
