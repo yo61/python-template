@@ -46,7 +46,10 @@ jobs:
 
   deploy:
     needs: build
-    if: github.event_name == 'push'
+    # Deploy on push to main and on manual dispatch; PRs build without
+    # deploying. Gating on `== 'push'` would make the workflow_dispatch
+    # trigger above decorative -- it would build and then skip the deploy.
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       pages: write
