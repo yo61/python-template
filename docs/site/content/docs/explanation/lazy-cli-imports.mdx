@@ -1,0 +1,72 @@
+---
+title: Why the CLI imports lazily
+description: The import pattern in cli.py, and the shell completion it exists to keep fast
+---
+
+`src/pythontemplate/cli.py` looks over-engineered for one example command. It
+imports every command module *inside* a function, memoises the app, and routes
+one argument before the CLI framework sees anything. Each piece pays for itself
+as the CLI grows.
+
+## The cost this avoids
+
+A CLI's slowest common operation is usually shell completion. Press tab and the
+shell runs your program, which imports its framework, builds its command tree,
+and prints a list — all to answer a question a static list could answer.
+
+That cost scales with the number of command modules, because each one is
+imported at startup whether or not it will run. In a sibling project the same
+pattern saves around 38ms per tab-press, mostly prompt-toolkit imports. This
+template has one command and cyclopts, so today the saving is small. The point
+is that it stays small: the pattern is cheap to keep and expensive to retrofit
+once thirty command modules import at module scope.
+
+## How the fast path works
+
+`main()` inspects `sys.argv` before doing anything else:
+
+```python
+if len(sys.argv) >= 2 and sys.argv[1] == "__complete":
+    _complete(*sys.argv[2:])
+    return
+```
+
+`_complete` prints candidates from `_TOP_LEVEL_COMMANDS`, a plain tuple of
+strings. No cyclopts import, no `App`, no command modules. Adding a command
+means adding its name to that tuple.
+
+The template ships the fast path but not the shell stubs that call it. Wiring
+`__complete` into bash or zsh completion is left to projects that want it.
+
+## Why the imports sit inside `_build_app`
+
+Every command module is imported in the body of `_build_app()`, never at module
+scope. `import pythontemplate.cli` therefore stays cheap, which is what makes
+the fast path possible — moving one import to module scope reintroduces the
+cost for every invocation, including completion.
+
+This is guarded, not merely documented.
+`tests/test_cli.py::test_complete_fast_path_does_not_build_the_app`
+monkeypatches `_build_app` to raise, then runs the completion path. If a future
+edit makes completion build the app, that test fails.
+
+## Why `get_app` is memoised behind a proxy
+
+`get_app()` builds the app once and caches it in `_app_cache`. `app()` is a
+thin proxy that calls it. The indirection exists so tests can reset the cache
+between cases — the autouse `_reset_app_cache` fixture does exactly that —
+without any test needing to know how the app is constructed.
+
+## Why `result_action="return_value"`
+
+Cyclopts' default result action prints a command's return value and then calls
+`sys.exit()`. This project splits responsibilities the other way: command
+implementations in `commands/` **return** their output, and the thin wrappers
+in `cli.py` print it.
+
+Under the default, a command that returned a string would be printed twice, and
+`main()` would never return — making its `except ValueError` exit path one of
+two ways the program can end. `result_action="return_value"` turns the return
+value back into an ordinary Python value, so `main()` has exactly one
+deliberate exit: catching `ValueError` and exiting `1` with a clean stderr
+line.

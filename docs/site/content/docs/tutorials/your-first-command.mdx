@@ -1,0 +1,175 @@
+---
+title: Your first command
+description: Generate a project from the template and add a working command to it
+---
+
+By the end you will have a project generated from this template, a new CLI
+command with tests, and a green quality gate. It takes about ten minutes.
+
+This is a tutorial: follow it in order and it works. The
+[how-to guides](/how-to) assume you already know the shape.
+
+## Prerequisites
+
+- [`uv`](https://docs.astral.sh/uv/) and [`task`](https://taskfile.dev)
+- [`prek`](https://github.com/j178/prek) for the git hooks
+- A repository created from this template — press **Use this template** on
+  GitHub, or `gh repo create my-tool --template yo61/python-template --public
+  --clone`
+
+## Steps
+
+### Run bootstrap
+
+If you are reading this inside a project that was already generated from the
+template, `bootstrap` is gone — it deletes itself — and you can skip to the
+next step.
+
+From the root of a fresh clone:
+
+```bash
+./bootstrap
+```
+
+It asks for a project name, package name, CLI command, description and author,
+then offers DDD layering — answer `N` for now; you can
+[add layers later](/how-to/add-ddd-layers).
+
+`bootstrap` rewrites every placeholder, renames the package directory, runs
+`uv sync`, installs the git hooks, commits, and deletes itself. It is a
+one-way operation, so let it finish.
+
+### Confirm the gate is green
+
+```bash
+task dev:check
+```
+
+Ruff, ruff format, `ty` and pytest, in that order. Nine tests pass. If this
+fails on a freshly generated project, something is wrong with your toolchain
+rather than your code — fix it before going further.
+
+### Write the test first
+
+The template ships one example command, `hello`. You are going to add a second,
+`add`, and you are going to write its test first.
+
+Create `tests/test_add.py`:
+
+```python
+"""Tests for the `add` command."""
+
+import pytest
+
+from pythontemplate.commands.add import run
+
+
+def test_add_sums_two_numbers():
+    assert run(2, 3) == "5"
+
+
+def test_add_handles_negatives():
+    assert run(-4, 1) == "-3"
+
+
+def test_add_rejects_a_huge_result():
+    with pytest.raises(ValueError, match="result too large"):
+        run(10**9, 10**9)
+```
+
+Run it and watch it fail:
+
+```bash
+uv run pytest tests/test_add.py
+```
+
+`ModuleNotFoundError` — the module does not exist yet. That failure is the
+point; it proves the test can fail.
+
+### Implement the command
+
+Create `src/pythontemplate/commands/add.py`:
+
+```python
+"""The `add` command."""
+
+from __future__ import annotations
+
+_MAX_RESULT = 1_000_000_000
+
+
+def run(left: int, right: int) -> str:
+    """Add two integers.
+
+    Returns the result as a string rather than printing it, so the behaviour
+    is testable without capturing stdout. The CLI layer does the printing.
+
+    Args:
+        left: First operand.
+        right: Second operand.
+
+    Returns:
+        The sum, rendered as a string.
+
+    Raises:
+        ValueError: If the result exceeds one billion.
+    """
+    total = left + right
+    if abs(total) > _MAX_RESULT:
+        raise ValueError("result too large")
+    return str(total)
+```
+
+Run the test again — three pass. Note the shape: `run` **returns** a string and
+never prints. That keeps it testable without `capsys`, and it is the convention
+every command in the project follows.
+
+### Wire it into the CLI
+
+Open `src/pythontemplate/cli.py` and edit `_build_app`. Import the module **inside**
+the function, next to the existing `hello` import:
+
+```python
+from pythontemplate.commands import add as cmd_add
+```
+
+Then register a wrapper alongside the `hello` one:
+
+```python
+    def add(left: int, right: int) -> None:
+        """Add two numbers.
+
+        Args:
+            left: First operand.
+            right: Second operand.
+        """
+        print(cmd_add.run(left, right))
+
+    app.command(add, name="add")
+```
+
+Finally add `"add"` to `_TOP_LEVEL_COMMANDS` at the top of the file, so shell
+completion offers it.
+
+The import going *inside* `_build_app` is not a style preference. `main()`
+answers `__complete` without building the app at all, so a module-scope import
+would be paid on every tab-press. A test guards this — see
+[Why the CLI imports lazily](/explanation/lazy-cli-imports).
+
+### Verification
+
+```bash
+uv run python-template add 2 3
+uv run python-template add 10000000000 10000000000
+task dev:check
+```
+
+The first prints `5`. The second prints `python-template: result too large` to stderr
+and exits `1`, with no traceback — `main()` turns `ValueError` into a clean
+error. The gate stays green, now with twelve tests.
+
+## What's next?
+
+- [Add DDD layers](/how-to/add-ddd-layers) once you have real domain logic
+- [Reference](/reference) for the full command, task and configuration tables
+- [Explanation](/explanation) for why the project is shaped this way

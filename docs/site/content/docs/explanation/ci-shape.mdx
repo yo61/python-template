@@ -1,0 +1,68 @@
+---
+title: Why CI is shaped this way
+description: The aggregator job, running hooks instead of restating them, and the job that stops the template rotting
+---
+
+`.github/workflows/ci.yaml` has six jobs where three would do. Each of the
+extra ones exists to close a specific failure that a simpler shape allows.
+
+## CI runs the hooks rather than restating them
+
+The `lint` job does not call `ruff` and `ty` directly. It runs
+`j178/prek-action`, which executes the hooks declared in
+`.pre-commit-config.yaml`.
+
+The alternative — listing the same commands in the workflow — creates two
+sources of truth that drift silently. A hook added locally is not run by CI
+until someone remembers to add it in a second place, and nobody notices the gap
+because both files look maintained. Running the hook file directly means
+`task dev:hooks` and CI cannot disagree.
+
+`uv sync --frozen` runs before the hook action because the `ruff`, `ty` and
+`pytest` hooks are `uv run --no-sync`, so they need the virtualenv to exist.
+
+## `zizmor` gets its own job
+
+The `lint` job sets `SKIP: zizmor`, and a separate `zizmor` job runs it. That
+looks redundant, and it is deliberate: the branch ruleset requires a check
+named `zizmor`, and a hook running inside `lint` produces no such check. The
+skip stops it running twice.
+
+## The `test` job runs nothing
+
+`test` is an aggregator. It declares `needs: [lint, pytest, bootstrap]`, runs
+`if: always()`, and its only step compares each dependency's result against
+`success`.
+
+The branch ruleset requires exactly one check name: `test`. That indirection
+means the pytest matrix can gain or lose a Python version, or a new job can
+join the gate, without anyone editing branch protection — a change that is easy
+to forget and invisible when forgotten.
+
+`if: always()` matters: without it, a skipped dependency would skip the
+aggregator too, and a skipped required check is not a failing one. The explicit
+result comparison makes the job fail closed on `skipped` and `cancelled` as
+well as `failure`.
+
+## The `bootstrap` job is what stops the template rotting
+
+`bootstrap` runs `scripts/test-bootstrap.sh`, which generates two projects from
+the committed tree — one flat, one with DDD layering — and runs the full gate
+on each, plus a real `pnpm install` and docs build on one.
+
+The failure it exists to catch: someone adds a file containing `python-template`
+or `pythontemplate` and does not register it with the bootstrap rewrite. The
+template's own CI stays green, because the template is a valid project either
+way. The defect is invisible until somebody generates a real project months
+later and finds a stray placeholder in it.
+
+That job is also why the smoke test builds from `git archive HEAD` rather than
+the working tree: it tests what a user would actually clone. The consequence is
+that uncommitted changes to `bootstrap` are not tested — commit before running
+it, or you will get a false pass.
+
+## `commitlint` only runs on pull requests
+
+Its `if: github.event_name == 'pull_request'` guard, plus `fetch-depth: 0` so
+the full commit range is available to lint. On a push to `main` the commits
+have already been through a PR.

@@ -1,0 +1,62 @@
+---
+title: hello
+description: Print a greeting
+---
+
+The example command the template ships. Delete it once you have a real one —
+it exists to show the shape, not to be useful.
+
+## What it does
+
+Prints a greeting to stdout. The implementation lives in
+`src/pythontemplate/commands/hello.py` and **returns** its string rather than
+printing it; `cli.py` does the printing. That split is deliberate — it keeps
+the behaviour testable without capturing stdout.
+
+## Output
+
+One line on stdout:
+
+```console
+$ python-template hello
+Hello, world!
+```
+
+## Flags
+
+| Flag | Type | Default | Effect |
+| --- | --- | --- | --- |
+| `NAME` / `--name` | string | `world` | Who to greet. Must contain at least one non-space character. |
+| `--shout` / `--no-shout` | bool | `False` | Uppercase the whole greeting. |
+
+`NAME` is positional-or-named: `hello Robin` and `hello --name Robin` are
+equivalent.
+
+## Exit codes
+
+| Code | Meaning |
+| --- | --- |
+| `0` | Greeting printed. |
+| `1` | `NAME` was empty or whitespace only. The message goes to stderr as `python-template: name must not be empty`, with no traceback. |
+
+The clean exit-1 path is `main()` catching `ValueError` in
+`src/pythontemplate/cli.py`. Raise `ValueError` from a command to get the same
+treatment.
+
+## Examples
+
+```console
+$ python-template hello
+Hello, world!
+
+$ python-template hello Robin
+Hello, Robin!
+
+$ python-template hello Robin --shout
+HELLO, ROBIN!
+
+$ python-template hello "   "
+python-template: name must not be empty
+$ echo $?
+1
+```

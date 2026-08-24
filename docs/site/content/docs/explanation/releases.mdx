@@ -1,0 +1,78 @@
+---
+title: How releases work
+description: release-please, the deps commit type, and why the lockfile is synced through the GitHub API
+---
+
+Releases are driven by commit messages. You never edit a version number; you
+write conventional commits, merge a Release PR, and the tag, changelog and
+publish follow.
+
+## The loop
+
+Every push to `main` runs release-please. It reads the commits since the last
+tag, works out the next version, and opens (or updates) a Release PR containing
+the version bump and the changelog entry. Merging that PR tags the release,
+which triggers the publish job.
+
+Nothing is released until you merge the Release PR. It is safe to let one sit.
+
+## Why `deps` is a commit type
+
+`deps` is not part of `@commitlint/config-conventional`; this project adds it
+in `commitlint.config.mjs` and maps it in `release-please-config.json`.
+
+release-please treats a *visible* changelog section as releasable. A commit
+typed `deps` therefore both appears in the changelog and cuts a patch release —
+which is what you want when a dependency bump reaches users. `chore(deps)` is
+hidden and releases nothing, which is what you want for developer tooling.
+
+`.github/dependabot.yml` splits accordingly: the Python ecosystem uses
+`prefix: "deps"` for production dependencies and `prefix-development:
+"chore(deps)"` for dev ones, and the pre-commit, actions and npm ecosystems use
+`chore(deps)` throughout. That line — visible or hidden — is the line between
+"our users are affected" and "our tooling changed".
+
+## Why the Release PR is opened by a GitHub App
+
+The workflow mints a short-lived token from a GitHub App rather than using
+`GITHUB_TOKEN`.
+
+GitHub does not fire `pull_request` workflows for PRs opened with
+`GITHUB_TOKEN` — a loop-prevention rule. A Release PR opened that way would
+have no checks at all, so a branch ruleset requiring `test` could never be
+satisfied and the PR could never merge.
+
+## Why the lockfile is synced through the GraphQL API
+
+release-please rewrites the version in `pyproject.toml`, but knows nothing
+about `uv.lock`, which contains a self-referencing pin of the project at its
+old version. Left alone, the lockfile is stale on `main` and the next `uv run`
+silently rewrites it.
+
+Three obvious fixes do not work:
+
+- release-please's `extra-files` cannot patch it, because `uv lock` strips
+  comments and the rewrite would not survive.
+- A `git commit` from the runner is rejected: the default branch ruleset
+  requires signed commits, and no signing key is provisioned on the runner.
+- Passing the lockfile inline to `gh api` breaks once it exceeds roughly 95KB,
+  hitting the per-argument limit — and `gh`'s `@filename` expansion does not
+  apply to GraphQL variables.
+
+So `sync-lockfile` runs `uv lock` on the Release PR branch and commits the
+result with the GraphQL `createCommitOnBranch` mutation. Commits made through
+the API on an App's behalf are signed by GitHub's own key, which satisfies the
+signature requirement. The request is assembled with `jq --rawfile` and
+submitted via `gh api graphql --input`, which sidesteps the argument-length
+limit.
+
+This is the one place `UV_FROZEN` is set to `0`. Everywhere else it is `1`, so
+the lockfile changes only deliberately.
+
+## Publishing
+
+The `publish` job builds with `uv build` and uploads via
+`pypa/gh-action-pypi-publish` using trusted publishing — OIDC, no API token
+stored anywhere. It needs a `pypi` environment on the repository and a
+matching trusted publisher configured on PyPI. Until both exist, the job fails;
+a project that will never publish should delete it.
