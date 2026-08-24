@@ -102,8 +102,7 @@ while IFS= read -r line; do
 done < <(
   git ls-files \
     | grep -v -e '^bootstrap$' -e '^\.bootstrap-defaults$' \
-      -e '^docs/superpowers/' -e '^LICENSE$' \
-      -e '^docs/site/pnpm-lock.yaml$'
+      -e '^docs/superpowers/' -e '^LICENSE$'
 )
 
 # Order matters: rewrite the kebab form first. `pythontemplate` contains no

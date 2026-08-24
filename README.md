@@ -74,6 +74,16 @@ task dev:check
 clone gets the same toolchain without a separate install step, provided
 `mise` is active in the shell.
 
+Ruff bans relative imports outright — `TID` is selected and
+`ban-relative-imports` is set to `all`, so `from .base import X` is rejected
+alongside `from ..base import X` (see
+`decisions/2026-08-24-absolute-imports.md`). A project adopting this template
+that already has relative imports can migrate them in one
+`ruff check --fix --unsafe-fixes` run followed by its test suite; the fix is
+classed unsafe — plain `--fix` will not apply it — because rewriting
+`from .base import X` to `from yourpackage.base import X` can change behaviour
+if the package is ever imported under another name.
+
 ## Tasks
 
 `task --list` shows every task with its description. The ones you'll use
