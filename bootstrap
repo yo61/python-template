@@ -42,6 +42,32 @@ else
   [[ "$reply" =~ ^[Yy]$ ]] && WANT_DDD=true
 fi
 
+# PACKAGE_NAME becomes a Python package directory and module path. Validate it
+# before any destructive work happens -- a bad value must not silently rename
+# src/pythontemplate to something unimportable and then commit it.
+[[ "$PACKAGE_NAME" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]] || {
+  echo "bootstrap: invalid PACKAGE_NAME '$PACKAGE_NAME' -- must be a legal" \
+    "Python identifier matching ^[A-Za-z_][A-Za-z0-9_]*\$" >&2
+  exit 1
+}
+
+# Escape a value for safe use as a sed replacement (the s|X|Y|g right-hand
+# side): backslash first, then & ("whole match") and | (our delimiter).
+# Applied once here so every substitution below is protected, rather than
+# repeating the escaping at each -e.
+sed_escape() {
+  local s=$1
+  s=${s//\\/\\\\}
+  s=${s//&/\\&}
+  s=${s//|/\\|}
+  printf '%s' "$s"
+}
+project_name_esc=$(sed_escape "$PROJECT_NAME")
+package_name_esc=$(sed_escape "$PACKAGE_NAME")
+description_esc=$(sed_escape "$DESCRIPTION")
+author_esc=$(sed_escape "$AUTHOR")
+cli_name_esc=$(sed_escape "$CLI_NAME")
+
 # Files carrying placeholders. Every template file that mentions a placeholder
 # must appear here or scripts/test-bootstrap.sh will fail.
 # Read into an array without `mapfile` -- that is a bash 4 builtin and
@@ -62,16 +88,16 @@ done < <(
 for f in "${files[@]}"; do
   [[ -f "$f" ]] || continue
   sed -i.bak \
-    -e "s|python-template|$PROJECT_NAME|g" \
-    -e "s|pythontemplate|$PACKAGE_NAME|g" \
-    -e "s|A template for yo61 Python projects\.|$DESCRIPTION|g" \
-    -e "s|Robin Bowes|$AUTHOR|g" \
+    -e "s|python-template|$project_name_esc|g" \
+    -e "s|pythontemplate|$package_name_esc|g" \
+    -e "s|A template for yo61 Python projects\.|$description_esc|g" \
+    -e "s|Robin Bowes|$author_esc|g" \
     "$f"
   rm -f "$f.bak"
 done
 
 # The CLI command name is independent of the project name.
-sed -i.bak "s|^$PROJECT_NAME = \"$PACKAGE_NAME.cli:main\"|$CLI_NAME = \"$PACKAGE_NAME.cli:main\"|" \
+sed -i.bak "s|^$PROJECT_NAME = \"$PACKAGE_NAME.cli:main\"|$cli_name_esc = \"$PACKAGE_NAME.cli:main\"|" \
   pyproject.toml && rm -f pyproject.toml.bak
 
 git mv "src/pythontemplate" "src/$PACKAGE_NAME"
