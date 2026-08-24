@@ -1,0 +1,74 @@
+version: "3"
+silent: true
+
+env:
+  UV_FROZEN: "1"
+
+tasks:
+  default:
+    desc: List available tasks
+    cmds:
+      - task --list
+
+  dev:lint:
+    desc: Run ruff check
+    cmds:
+      - uv run ruff check src tests
+
+  dev:fmt:
+    desc: Apply ruff format
+    cmds:
+      - uv run ruff format src tests
+
+  dev:fmt-check:
+    desc: Check formatting without rewriting
+    cmds:
+      - uv run ruff format --check src tests
+
+  dev:typecheck:
+    desc: Run ty type checker
+    cmds:
+      - uv run ty check src
+
+  dev:test:
+    desc: Run the pytest suite
+    cmds:
+      - uv run pytest
+
+  dev:check:
+    desc: Full quality gate — lint, format-check, typecheck, tests
+    cmds:
+      - task: dev:lint
+      - task: dev:fmt-check
+      - task: dev:typecheck
+      - task: dev:test
+
+  dev:hooks:
+    desc: Run all prek hooks against every file
+    cmds:
+      - prek run --all-files
+
+  dev:hooks-install:
+    desc: Install git hooks (pre-commit, commit-msg, pre-push)
+    cmds:
+      - prek install --hook-type pre-commit --hook-type commit-msg --hook-type pre-push
+
+  docs:dev:
+    desc: Run the Fumadocs site locally with hot reload at http://localhost:3000.
+      Strips the GitHub Pages basePath so assets resolve under root.
+    dir: docs/site
+    cmds:
+      - BASE_PATH= pnpm dev
+
+  docs:serve:
+    desc: Production-build the site without basePath and serve it locally.
+    dir: docs/site
+    cmds:
+      - BASE_PATH= SITE_URL=http://localhost:3000 pnpm build
+      - pnpm start
+
+  docs:build:
+    desc: Production build with the /python-template basePath, matching CI.
+    dir: docs/site
+    cmds:
+      - pnpm build

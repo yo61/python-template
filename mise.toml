@@ -1,0 +1,11 @@
+[tools]
+uv = "0.11"
+task = "3"
+node = "22"
+pnpm = "11"
+
+[env]
+# Stop ad-hoc `uv run` from rewriting uv.lock. The lockfile changes
+# deliberately, via `uv lock` or the release-please sync-lockfile job.
+UV_FROZEN = "1"
+_.python.venv = ".venv"
