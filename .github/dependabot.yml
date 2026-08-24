@@ -1,0 +1,67 @@
+version: 2
+
+updates:
+  # Developer tooling; never reaches the published package.
+  - package-ecosystem: "pre-commit"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      hooks:
+        patterns: ["*"]
+
+  # Python. The `uv` ecosystem updates uv.lock as well as the pyproject
+  # constraints; `pip` would leave the lock stale.
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: "deps"
+      prefix-development: "chore(deps)"
+    groups:
+      uv-production:
+        dependency-type: "production"
+        update-types: ["minor", "patch"]
+      uv-development:
+        dependency-type: "development"
+        update-types: ["minor", "patch"]
+
+  # Actions. Pins are SHAs with version comments; Dependabot rewrites both.
+  # Majors stay outside the group so they arrive as individual PRs.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      actions-minor-patch:
+        update-types: ["minor", "patch"]
+
+  # docs/site is pnpm-managed; Dependabot auto-detects pnpm-lock.yaml.
+  - package-ecosystem: "npm"
+    directory: "/docs/site"
+    schedule:
+      interval: "weekly"
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: "chore(deps)"
+    ignore:
+      # TypeScript 7.x is the native (Go) compiler; it drops the JS compiler
+      # API that `next build` loads for type-checking. Hold on 6.x until the
+      # Next/fumadocs toolchain supports it.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+    groups:
+      npm-minor-patch:
+        update-types: ["minor", "patch"]
