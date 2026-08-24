@@ -51,25 +51,52 @@ jobs:
       - run: uv sync --frozen
       - run: uv run pytest -q
 
+  bootstrap:
+    name: bootstrap
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d  # v10.0.1
+        with:
+          python-version: "3.13"
+          enable-cache: true
+          cache-suffix: bootstrap
+      - uses: go-task/setup-task@a00fbb05ce67b35648be3c78cbc9fd85354c757e  # v2.2.0
+        with:
+          version: 3.x
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86  # v6.0.10
+        with:
+          version: 11
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
+        with:
+          node-version: 22
+      # Generates two projects from the template and runs the full gate on
+      # each. Without this, a new file whose placeholder nobody registered
+      # stays invisible until somebody generates a real project from it.
+      - run: ./scripts/test-bootstrap.sh
+
   # Aggregator. The branch ruleset requires this exact check name, so the
   # matrix can grow without touching branch protection.
   test:
     name: test
     runs-on: ubuntu-latest
-    needs: [lint, pytest]
+    needs: [lint, pytest, bootstrap]
     if: always()
     steps:
       - name: aggregate
         env:
           LINT: ${{ needs.lint.result }}
           PYTEST: ${{ needs.pytest.result }}
+          BOOTSTRAP: ${{ needs.bootstrap.result }}
         run: |
           set -euo pipefail
-          if [[ "$LINT" != "success" || "$PYTEST" != "success" ]]; then
-            echo "lint=$LINT pytest=$PYTEST"
+          if [[ "$LINT" != "success" || "$PYTEST" != "success" || "$BOOTSTRAP" != "success" ]]; then
+            echo "lint=$LINT pytest=$PYTEST bootstrap=$BOOTSTRAP"
             exit 1
           fi
-          echo "lint and pytest matrix all green"
+          echo "all green"
 
   commitlint:
     name: commitlint
