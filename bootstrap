@@ -1,0 +1,158 @@
+#!/usr/bin/env bash
+# Turn this template into a project. Deletes itself on success.
+set -euo pipefail
+
+USE_DEFAULTS=false
+WANT_DDD=false
+for arg in "$@"; do
+  case "$arg" in
+    --defaults) USE_DEFAULTS=true ;;
+    --ddd) WANT_DDD=true ;;
+    *)
+      echo "usage: $0 [--defaults] [--ddd]" >&2
+      exit 2
+      ;;
+  esac
+done
+
+command -v uv > /dev/null || {
+  echo "bootstrap: uv is required (https://docs.astral.sh/uv/)" >&2
+  exit 1
+}
+
+repo_name=$(basename "$(git rev-parse --show-toplevel)")
+
+ask() { # ask VAR PROMPT DEFAULT
+  local var=$1 prompt=$2 default=$3 reply
+  read -r -p "  $prompt [$default]: " reply
+  printf -v "$var" '%s' "${reply:-$default}"
+}
+
+if $USE_DEFAULTS; then
+  # shellcheck source=.bootstrap-defaults disable=SC1091
+  . ./.bootstrap-defaults
+else
+  echo "Configuring this template."
+  ask PROJECT_NAME "Project name" "$repo_name"
+  ask PACKAGE_NAME "Package name" "${PROJECT_NAME//-/_}"
+  ask CLI_NAME "CLI command" "$PROJECT_NAME"
+  ask DESCRIPTION "Description" "A tool that does a thing."
+  ask AUTHOR "Author" "$(git config user.name || echo 'Robin Bowes')"
+  read -r -p "  DDD layering? [y/N]: " reply
+  [[ "$reply" =~ ^[Yy]$ ]] && WANT_DDD=true
+fi
+
+# Files carrying placeholders. Every template file that mentions a placeholder
+# must appear here or scripts/test-bootstrap.sh will fail.
+# Read into an array without `mapfile` -- that is a bash 4 builtin and
+# macOS still ships bash 3.2 at /bin/bash.
+files=()
+while IFS= read -r line; do
+  files+=("$line")
+done < <(
+  git ls-files \
+    | grep -v -e '^bootstrap$' -e '^\.bootstrap-defaults$' \
+      -e '^docs/superpowers/' -e '^LICENSE$' -e '^pnpm-lock' \
+      -e '^docs/site/pnpm-lock.yaml$'
+)
+
+# Order matters: rewrite the kebab form first. `pythontemplate` contains no
+# hyphen so the two never overlap, but keeping the order fixed makes the
+# substitution auditable.
+for f in "${files[@]}"; do
+  [[ -f "$f" ]] || continue
+  sed -i.bak \
+    -e "s|python-template|$PROJECT_NAME|g" \
+    -e "s|pythontemplate|$PACKAGE_NAME|g" \
+    -e "s|A template for yo61 Python projects\.|$DESCRIPTION|g" \
+    -e "s|Robin Bowes|$AUTHOR|g" \
+    "$f"
+  rm -f "$f.bak"
+done
+
+# The CLI command name is independent of the project name.
+sed -i.bak "s|^$PROJECT_NAME = \"$PACKAGE_NAME.cli:main\"|$CLI_NAME = \"$PACKAGE_NAME.cli:main\"|" \
+  pyproject.toml && rm -f pyproject.toml.bak
+
+git mv "src/pythontemplate" "src/$PACKAGE_NAME"
+
+# Reset release state.
+printf '{".":"0.0.0"}\n' > .release-please-manifest.json
+printf '# Changelog\n' > CHANGELOG.md
+
+# Template-specific records must not propagate into the generated project.
+rm -f docs/superpowers/specs/2026-08-24-python-template-rewrite-design.md
+rm -f docs/superpowers/plans/2026-08-24-python-template-rewrite.md
+
+if $WANT_DDD; then
+  for layer in application domain infrastructure; do
+    mkdir -p "src/$PACKAGE_NAME/$layer"
+    printf '"""%s layer."""\n' "$layer" > "src/$PACKAGE_NAME/$layer/__init__.py"
+  done
+  # Uncomment the importlinter block: strip the leading '# ' from every line
+  # between the marker and end of file.
+  sed -i.bak '/^# \[tool.importlinter\]/,$ s/^# \{0,1\}//' pyproject.toml
+  rm -f pyproject.toml.bak
+  # UV_FROZEN=1 comes from mise.toml and makes `uv add` refuse to touch
+  # the lockfile. Override for this one call.
+  UV_FROZEN=0 uv add --dev --quiet 'import-linter>=2'
+  python3 - "$PACKAGE_NAME" << 'PY'
+import pathlib
+import sys
+
+pkg = sys.argv[1]
+tf = pathlib.Path("Taskfile.yml")
+s = tf.read_text()
+s = s.replace(
+    "  dev:test:\n",
+    "  dev:imports:\n"
+    "    desc: Enforce import boundaries (import-linter)\n"
+    "    cmds:\n"
+    "      - uv run lint-imports\n"
+    "\n"
+    "  dev:test:\n",
+    1,
+)
+s = s.replace(
+    "      - task: dev:typecheck\n      - task: dev:test\n",
+    "      - task: dev:typecheck\n      - task: dev:imports\n      - task: dev:test\n",
+    1,
+)
+tf.write_text(s)
+
+hooks = pathlib.Path(".pre-commit-config.yaml")
+h = hooks.read_text()
+h = h.replace(
+    "      # pytest is a pre-push gate",
+    "      - id: import-linter\n"
+    "        name: import-linter\n"
+    "        entry: uv run --no-sync lint-imports\n"
+    "        language: system\n"
+    "        types: [python]\n"
+    "        pass_filenames: false\n"
+    "      # pytest is a pre-push gate",
+    1,
+)
+hooks.write_text(h)
+PY
+fi
+
+uv sync --quiet
+command -v prek > /dev/null && prek install \
+  --hook-type pre-commit --hook-type commit-msg --hook-type pre-push
+
+rm -f bootstrap .bootstrap-defaults
+git add -A
+git -c user.email="$(git config user.email || echo bootstrap@local)" \
+  -c user.name="$AUTHOR" \
+  commit -qm "chore: bootstrap $PROJECT_NAME from python-template"
+
+cat << MSG
+
+Done.
+  package   src/$PACKAGE_NAME
+  command   $CLI_NAME
+  DDD       $($WANT_DDD && echo enabled || echo "flat (see docs how-to/add-ddd-layers)")
+
+Next: task dev:check
+MSG

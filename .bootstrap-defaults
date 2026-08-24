@@ -1,0 +1,6 @@
+# Non-interactive answers, used by ./bootstrap --defaults and CI.
+PROJECT_NAME=my-tool
+PACKAGE_NAME=my_tool
+CLI_NAME=my-tool
+DESCRIPTION="A tool that does a thing."
+AUTHOR="Robin Bowes"
