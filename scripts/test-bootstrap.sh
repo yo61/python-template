@@ -6,6 +6,12 @@ REPO_ROOT=$(git rev-parse --show-toplevel)
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
 
+# Both cases run `./bootstrap --defaults`, so the expected answers are exactly
+# what bootstrap itself will read. AUTHOR in particular is deliberately not
+# the template's own author, so a leaked author cannot pass as a rewritten one.
+# shellcheck source=.bootstrap-defaults disable=SC1091
+. "$REPO_ROOT/.bootstrap-defaults"
+
 fail() {
   echo "FAIL: $*" >&2
   exit 1
@@ -23,10 +29,13 @@ run_case() {
 
   (cd "$dir" && ./bootstrap --defaults "$@") || fail "$name: bootstrap exited non-zero"
 
-  # No placeholder may survive anywhere in the generated tree.
+  # No placeholder may survive anywhere in the generated tree. All four are
+  # listed: the two name tokens alone cannot catch a leaked author or
+  # description, which live in files the name tokens never touch.
   local leaks
-  leaks=$(grep -rIl --exclude-dir=.git --exclude-dir=node_modules \
-    --exclude-dir=.venv -e 'pythontemplate' -e 'python-template' "$dir" || true)
+  leaks=$(grep -rIlF --exclude-dir=.git --exclude-dir=node_modules \
+    --exclude-dir=.venv -e 'pythontemplate' -e 'python-template' \
+    -e 'Robin Bowes' -e 'A template for yo61 Python projects.' "$dir" || true)
   [[ -z "$leaks" ]] || fail "$name: placeholders survived in:
 $leaks"
 
@@ -35,6 +44,42 @@ $leaks"
   [[ ! -e "$dir/.bootstrap-defaults" ]] || fail "$name: defaults file survived"
   [[ ! -e "$dir/docs/superpowers/specs/2026-08-24-python-template-rewrite-design.md" ]] \
     || fail "$name: template design docs leaked into the generated project"
+
+  # The smoke test itself must not ship: it runs ./bootstrap, which by this
+  # point has deleted itself, so a surviving copy is exit 127 in the generated
+  # project's CI -- and the `test` aggregator the branch ruleset requires
+  # would block every pull request from day one.
+  [[ ! -e "$dir/scripts/test-bootstrap.sh" ]] \
+    || fail "$name: scripts/test-bootstrap.sh leaked into the generated project"
+  [[ ! -d "$dir/scripts" ]] || fail "$name: an empty scripts/ directory survived"
+
+  local ci="$dir/.github/workflows/ci.yaml"
+  if grep -q '^  bootstrap:' "$ci"; then
+    fail "$name: the bootstrap job survived in .github/workflows/ci.yaml"
+  fi
+  if grep -q 'bootstrap' "$ci"; then
+    fail "$name: ci.yaml still references bootstrap (needs:, env: or a step)"
+  fi
+  grep -q '^    needs: \[lint, pytest\]$' "$ci" \
+    || fail "$name: the test aggregator's needs list was not rewritten"
+
+  # The template's README is its onboarding doc: it tells the reader to run a
+  # script the generated project does not have.
+  if grep -q -e './bootstrap' -e 'Use this template' "$dir/README.md"; then
+    fail "$name: README.md still reads as the template's own onboarding doc"
+  fi
+  grep -q '^# my-tool$' "$dir/README.md" \
+    || fail "$name: README.md was not replaced with the project's own"
+
+  # "Before ./bootstrap runs, these are live values" is false, and misleading
+  # to an agent, once the project is generated.
+  if grep -q '^## Placeholders' "$dir/CLAUDE.md"; then
+    fail "$name: CLAUDE.md kept its Placeholders section"
+  fi
+
+  # LICENSE is excluded from the placeholder sweep and rewritten line-wise.
+  grep -Fq "Copyright $(date +%Y) $AUTHOR" "$dir/LICENSE" \
+    || fail "$name: LICENSE copyright is not 'Copyright <this year> $AUTHOR'"
 
   grep -q "basePath = process.env.BASE_PATH ?? '/my-tool'" \
     "$dir/docs/site/next.config.mjs" || fail "$name: Fumadocs basePath not rewritten"

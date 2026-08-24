@@ -25,6 +25,14 @@ style test`. `deps` is non-standard and deliberate — it routes dependency
 updates to a visible Dependencies changelog section, where `chore(deps)` would
 be hidden and cut no release.
 
+## Agent scaffolding
+
+- `decisions/` — decision records. Grep it before making a choice that
+  outlives today's task; add a record when you make a new one.
+- `quality/criteria.md` — the criteria a task is checked against before it is
+  called done.
+- `docs/superpowers/` — specs and plans.
+
 ## Placeholders
 
 Before `./bootstrap` runs, `pythontemplate` and `python-template` are live

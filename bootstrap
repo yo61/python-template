@@ -19,6 +19,10 @@ command -v uv > /dev/null || {
   echo "bootstrap: uv is required (https://docs.astral.sh/uv/)" >&2
   exit 1
 }
+command -v python3 > /dev/null || {
+  echo "bootstrap: python3 is required" >&2
+  exit 1
+}
 
 repo_name=$(basename "$(git rev-parse --show-toplevel)")
 
@@ -51,6 +55,26 @@ fi
   exit 1
 }
 
+# PROJECT_NAME becomes the PEP 508 distribution name, the GitHub Pages
+# basePath and the Fumadocs appName; CLI_NAME becomes a console-script
+# command. Both need the same up-front check: `uv sync` rejecting an illegal
+# distribution name half-way through leaves a fully rewritten working tree.
+for pair in "PROJECT_NAME:$PROJECT_NAME" "CLI_NAME:$CLI_NAME"; do
+  [[ "${pair#*:}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || {
+    echo "bootstrap: invalid ${pair%%:*} '${pair#*:}' -- must match" \
+      "^[A-Za-z0-9][A-Za-z0-9._-]*\$" >&2
+    exit 1
+  }
+done
+
+# Everything past this point rewrites the tree in place, so a failure leaves
+# a half-converted checkout. Say how to get back rather than dying silently.
+recover() {
+  echo "bootstrap: failed part-way through -- the tree is half-rewritten." >&2
+  echo "bootstrap: discard it with: git reset --hard && git clean -fd" >&2
+}
+trap recover ERR
+
 # Escape a value for safe use as a sed replacement (the s|X|Y|g right-hand
 # side): backslash first, then & ("whole match") and | (our delimiter).
 # Applied once here so every substitution below is protected, rather than
@@ -78,7 +102,7 @@ while IFS= read -r line; do
 done < <(
   git ls-files \
     | grep -v -e '^bootstrap$' -e '^\.bootstrap-defaults$' \
-      -e '^docs/superpowers/' -e '^LICENSE$' -e '^pnpm-lock' \
+      -e '^docs/superpowers/' -e '^LICENSE$' \
       -e '^docs/site/pnpm-lock.yaml$'
 )
 
@@ -106,9 +130,140 @@ git mv "src/pythontemplate" "src/$PACKAGE_NAME"
 printf '{".":"0.0.0"}\n' > .release-please-manifest.json
 printf '# Changelog\n' > CHANGELOG.md
 
-# Template-specific records must not propagate into the generated project.
+# Template-only content must not propagate into the generated project: the
+# design records, and the smoke test that drives ./bootstrap -- which is about
+# to delete itself, so the test could only ever exit 127 from here on.
 rm -f docs/superpowers/specs/2026-08-24-python-template-rewrite-design.md
 rm -f docs/superpowers/plans/2026-08-24-python-template-rewrite.md
+rm -f scripts/test-bootstrap.sh
+rmdir scripts 2> /dev/null || true
+
+# LICENSE is excluded from the bulk sweep -- a blanket substitution across
+# Apache-2.0 text risks mangling the licence body -- so rewrite the single
+# copyright line on its own, then prove the rewrite landed.
+license_year=$(date +%Y)
+sed -i.bak \
+  "s|^\([[:space:]]*\)Copyright [0-9][0-9][0-9][0-9] .*$|\1Copyright $license_year $author_esc|" \
+  LICENSE
+rm -f LICENSE.bak
+grep -Fq "Copyright $license_year $AUTHOR" LICENSE || {
+  echo "bootstrap: failed to rewrite the LICENSE copyright line" >&2
+  exit 1
+}
+
+# Three files still carry template-only instructions at this point: ci.yaml's
+# bootstrap job (its script is gone), CLAUDE.md's Placeholders section (false
+# once the values are the project's own), and README.md (the template's
+# onboarding doc). Patch them by exact-match anchor so a stale anchor fails
+# loudly rather than silently no-opping. A YAML round-trip is not an option:
+# it would reformat ci.yaml and drop every comment.
+PROJECT_NAME="$PROJECT_NAME" DESCRIPTION="$DESCRIPTION" CLI_NAME="$CLI_NAME" \
+  python3 << 'PY'
+import os
+import pathlib
+
+project = os.environ["PROJECT_NAME"]
+description = os.environ["DESCRIPTION"]
+cli = os.environ["CLI_NAME"]
+
+
+def cut(text, start, end, what):
+    """Drop [start, end) from text, or die naming the anchor that moved."""
+    i = text.find(start)
+    j = text.find(end, i + len(start)) if i != -1 else -1
+    if i == -1 or j == -1:
+        raise SystemExit(f"bootstrap: anchor moved, cannot remove {what}")
+    return text[:i] + text[j:]
+
+
+def sub(text, old, new, what):
+    if old not in text:
+        raise SystemExit(f"bootstrap: anchor moved, cannot patch {what}")
+    return text.replace(old, new, 1)
+
+
+ci_path = pathlib.Path(".github/workflows/ci.yaml")
+ci = ci_path.read_text()
+ci = cut(
+    ci,
+    "  bootstrap:\n    name: bootstrap\n",
+    "  # Aggregator.",
+    "the bootstrap job",
+)
+ci = sub(
+    ci,
+    "    needs: [lint, pytest, bootstrap]\n",
+    "    needs: [lint, pytest]\n",
+    "the aggregator needs list",
+)
+ci = sub(
+    ci,
+    "          BOOTSTRAP: ${{ needs.bootstrap.result }}\n",
+    "",
+    "the aggregator BOOTSTRAP env var",
+)
+ci = sub(
+    ci,
+    '          if [[ "$LINT" != "success" || "$PYTEST" != "success"'
+    ' || "$BOOTSTRAP" != "success" ]]; then\n'
+    '            echo "lint=$LINT pytest=$PYTEST bootstrap=$BOOTSTRAP"\n',
+    '          if [[ "$LINT" != "success" || "$PYTEST" != "success" ]]; then\n'
+    '            echo "lint=$LINT pytest=$PYTEST"\n',
+    "the aggregator condition",
+)
+ci_path.write_text(ci)
+
+claude_path = pathlib.Path("CLAUDE.md")
+doc = claude_path.read_text()
+start = doc.find("## Placeholders\n")
+if start == -1:
+    raise SystemExit("bootstrap: CLAUDE.md has no Placeholders section")
+end = doc.find("\n## ", start + 1)
+head = doc[:start].rstrip("\n")
+tail = doc[end + 1 :] if end != -1 else ""
+claude_path.write_text(f"{head}\n\n{tail}" if tail else f"{head}\n")
+
+pathlib.Path("README.md").write_text(f"""# {project}
+
+{description}
+
+## Install
+
+```bash
+uv sync
+```
+
+## Run
+
+```bash
+uv run {cli} --help
+```
+
+## Develop
+
+`task dev:check` is the gate: `ruff check`, `ruff format --check`, `ty check`
+and `pytest`. Run it before every commit — CI runs the same checks through the
+prek hooks in `.pre-commit-config.yaml`.
+
+`task --list` shows every task. `task dev:hooks-install` installs the local
+git hooks.
+
+Agent-facing scaffolding lives in `CLAUDE.md` (project instructions),
+`decisions/` (decision records), `quality/criteria.md` (the quality gate) and
+`docs/superpowers/` (specs and plans).
+
+## Docs
+
+The docs site is in `docs/site/`, built with Fumadocs and published to
+<https://yo61.github.io/{project}/> on every push to `main`.
+
+- `task docs:dev` — hot-reloading site on <http://localhost:3000>
+- `task docs:serve` — production build served locally, without the Pages
+  `basePath`
+- `task docs:build` — production build with the `/{project}` `basePath`,
+  matching CI
+""")
+PY
 
 if $WANT_DDD; then
   for layer in application domain infrastructure; do
@@ -122,11 +277,9 @@ if $WANT_DDD; then
   # UV_FROZEN=1 comes from mise.toml and makes `uv add` refuse to touch
   # the lockfile. Override for this one call.
   UV_FROZEN=0 uv add --dev --quiet 'import-linter>=2'
-  python3 - "$PACKAGE_NAME" << 'PY'
+  python3 << 'PY'
 import pathlib
-import sys
 
-pkg = sys.argv[1]
 tf = pathlib.Path("Taskfile.yml")
 s = tf.read_text()
 s = s.replace(

@@ -4,6 +4,14 @@ on:
   push:
     branches: [main]
 
+# Serialise release runs. Two rapid pushes to main otherwise race: the second
+# force-updates the release PR branch while the first is mid-flight, and the
+# first's createCommitOnBranch fails its expectedHeadOid. Queue rather than
+# cancel -- cancelling a run part-way through publishing is worse than waiting.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions: {}
 
 jobs:

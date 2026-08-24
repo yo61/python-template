@@ -28,11 +28,19 @@ author, then rewrites every file, commits the result, and deletes itself.
 `./bootstrap --defaults` skips the prompts and uses `.bootstrap-defaults`
 instead, which is what CI uses to smoke-test the template itself.
 
+Alongside the placeholder rewrite it strips the parts that only make sense in
+the template: `bootstrap` and `.bootstrap-defaults`, `scripts/test-bootstrap.sh`
+and its `bootstrap` CI job, the design records under `docs/superpowers/`, and
+the `Placeholders` section of `CLAUDE.md`. It replaces this README with a short
+one for the new project and rewrites the `LICENSE` copyright line to the
+current year and the author you gave it.
+
 Two things worth knowing before you run it:
 
-- **It is destructive and one-way.** It rewrites files in place, `git commit`s
-  the result, and removes `bootstrap` and `.bootstrap-defaults` when it's
-  done. There's no undo short of `git reset` before the commit lands.
+- **It is destructive and one-way.** It rewrites files in place and `git
+  commit`s the result. There's no undo short of `git reset --hard && git clean
+  -fd` before the commit lands; the script prints that hint if it fails
+  part-way through.
 - `scripts/test-bootstrap.sh` (the smoke test CI runs) generates its test
   projects from the **committed** tree via `git archive HEAD`, not the
   working directory. If you're iterating on `bootstrap` itself, commit your
@@ -82,6 +90,17 @@ most:
 - `task dev:hooks-install` — install the pre-commit, commit-msg and pre-push
   git hooks locally.
 
+## Agent scaffolding
+
+`CLAUDE.md` holds the project instructions an agent reads first. Three
+directories back it up, and all three ship into the generated project:
+
+- `decisions/` — decision records for choices that outlive a single task.
+- `quality/criteria.md` — the criteria a task is checked against before it is
+  called done.
+- `docs/superpowers/` — specs and plans. The template's own are removed by
+  `bootstrap`; the `README.md` explaining the layout stays.
+
 ## Docs site
 
 The docs live in `docs/site/`, built with Fumadocs and deployed to GitHub
@@ -117,3 +136,18 @@ and a bootstrap smoke test that generates two projects from the template
 any file that uses a placeholder the bootstrap script doesn't know about.
 `commitlint` and `zizmor` run as separate checks. `release-please` and
 Dependabot handle releases and dependency updates.
+
+## Releases
+
+Two things have to be true before the Release workflow can do anything:
+
+- **The repository has to live under the `yo61` org.** `release.yaml` gates
+  its first job on `github.repository_owner == 'yo61'`, so anywhere else it
+  runs, reports success, and does nothing. Fork it elsewhere and that line is
+  the one to change.
+- **The secrets and the environment have to exist.** The workflow mints a
+  GitHub App token from `SEMANTIC_RELEASE_APP_CLIENT_ID` and
+  `SEMANTIC_RELEASE_APP_PRIVATE_KEY`, and publishes from a `pypi` environment
+  using PyPI trusted publishing. Without the two secrets the release PR is
+  never opened; without the environment (and a matching trusted publisher on
+  PyPI) the publish step fails.
