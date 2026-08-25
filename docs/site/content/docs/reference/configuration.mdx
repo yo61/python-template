@@ -1,0 +1,75 @@
+---
+title: Configuration
+description: The files that control the toolchain, and what each one owns
+---
+
+Each file below owns one concern. This page says which, and records the
+settings that are deliberate rather than default.
+
+## pyproject.toml
+
+Project metadata, dependencies, and the configuration for `ruff`, `ty` and
+`pytest`.
+
+The build backend is `uv_build`. `[tool.uv.build-backend] module-name` is
+required because uv_build derives the package directory from the distribution
+name — `python-template` normalises to `python_template`, but the package is
+`pythontemplate`. See [Switch to hatchling](/how-to/use-hatchling) to change
+backends.
+
+| Setting | Value |
+| --- | --- |
+| `requires-python` | `>=3.11` |
+| `ruff` `line-length` | `100` |
+| `ruff` `target-version` | `py311` |
+| `ruff` `select` | `E`, `F`, `I`, `UP`, `B`, `SIM`, `RUF`, `TID` |
+| `ruff` `quote-style` | `double` |
+| `ban-relative-imports` | `all` |
+| `pytest` `addopts` | `-ra --strict-markers --strict-config` |
+
+`ban-relative-imports = "all"` is set explicitly because TID252 defaults to
+`"parents"`, which flags `..` but permits `from .base import X`.
+
+`[tool.ty.rules]` is present but empty — `ty` is strict by default and the
+table exists as the place to relax a rule when you must.
+
+A commented-out `[tool.importlinter]` block sits at the end of the file. See
+[Add DDD layers](/how-to/add-ddd-layers).
+
+## mise.toml
+
+Pins the toolchain — `uv`, `task`, `node`, `pnpm` — and exports `UV_FROZEN=1`
+shell-wide so a stray `uv run` cannot silently rewrite `uv.lock`. The lockfile
+changes only via `uv lock`, or the release workflow's `sync-lockfile` job.
+
+## .pre-commit-config.yaml
+
+The hooks `prek` runs. `ruff`, `ty` and `pytest` are `local` hooks invoked
+through `uv run --no-sync`, so their versions come from `uv.lock` — there is no
+second `rev:` to keep aligned with the project's own pins.
+
+`pytest` runs at `pre-push` rather than `pre-commit`, so a docs-only commit is
+not held up by the suite.
+
+## commitlint.config.mjs
+
+Enforces Conventional Commits. The type list adds `deps`, which is not part of
+`@commitlint/config-conventional`: release-please routes `deps` commits to a
+visible Dependencies changelog section, where `chore(deps)` would be hidden.
+
+`subject-case` is disabled so class names and acronyms survive in subjects.
+
+## release-please-config.json
+
+Release automation. `release-type` is `python`; tags include a leading `v`;
+`bump-minor-pre-major` keeps pre-1.0 versions on minor bumps. The
+`changelog-sections` map decides which commit types reach the changelog —
+a visible section is also a releasable one.
+
+## Environment variables
+
+| Variable | Set by | Effect |
+| --- | --- | --- |
+| `UV_FROZEN` | `mise.toml`, `Taskfile.yml` | `1` stops `uv` rewriting the lockfile. The release workflow sets `0` for the one job that must. |
+| `BASE_PATH` | `Taskfile.yml` docs tasks | Empty strips the Pages basePath for local serving. |
+| `SITE_URL` | `Taskfile.yml` `docs:serve` | Overrides the canonical site URL locally. |

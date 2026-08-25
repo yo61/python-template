@@ -1,0 +1,45 @@
+---
+title: Tasks
+description: Every task target defined in Taskfile.yml
+---
+
+`task --list` prints this table from the source of truth. It is reproduced here
+so you can read it without a checkout.
+
+## Development
+
+| Task | Runs |
+| --- | --- |
+| `task dev:check` | The gate: `dev:lint`, `dev:fmt-check`, `dev:typecheck`, `dev:test`, in that order. |
+| `task dev:lint` | `ruff check src tests` |
+| `task dev:fmt` | `ruff format src tests` — rewrites files. |
+| `task dev:fmt-check` | `ruff format --check src tests` — fails without rewriting. |
+| `task dev:typecheck` | `ty check src` |
+| `task dev:test` | `pytest` |
+
+`task dev:check` is the single gate. CI runs the same tools, and the bootstrap
+smoke test runs `task dev:check` inside each generated project — so if it
+passes locally it passes everywhere.
+
+## Hooks
+
+| Task | Runs |
+| --- | --- |
+| `task dev:hooks` | `prek run --all-files` |
+| `task dev:hooks-install` | `prek install` for the `pre-commit`, `commit-msg` and `pre-push` hook types. |
+
+Run `task dev:hooks-install` once per clone. CI executes the hooks from
+`.pre-commit-config.yaml` rather than restating the commands, so local and CI
+cannot drift.
+
+## Docs
+
+| Task | Runs |
+| --- | --- |
+| `task docs:dev` | `pnpm dev` with `BASE_PATH=` — hot reload at `http://localhost:3000`. |
+| `task docs:serve` | Production build without a basePath, then serves it. |
+| `task docs:build` | Production build with the `/python-template` basePath, matching CI. |
+
+`docs:dev` and `docs:serve` strip the basePath deliberately: the deployed site
+is mounted at `/python-template`, but a local server serves from the root, so
+keeping the prefix would 404 every asset.
