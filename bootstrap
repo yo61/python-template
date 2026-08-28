@@ -138,9 +138,14 @@ sed -i.bak "s|^$PROJECT_NAME = \"$PACKAGE_NAME.cli:main\"|$cli_name_esc = \"$PAC
 
 git mv "src/pythontemplate" "src/$PACKAGE_NAME"
 
-# Reset release state.
+# Reset release state. CHANGELOG.md is emptied, not seeded with a heading:
+# release-please's Changelog updater treats any pre-existing content as prior
+# changelog body when it finds no version heading, so it demotes `# Changelog`
+# to `## Changelog` and appends it below the first release's entry
+# (src/updaters/changelog.ts, adjustHeaders). An empty file takes the clean
+# branch instead.
 printf '{".":"0.0.0"}\n' > .release-please-manifest.json
-printf '# Changelog\n' > CHANGELOG.md
+: > CHANGELOG.md
 
 # Template-only content must not propagate into the generated project: the
 # design records, and the smoke test that drives ./bootstrap -- which is about
