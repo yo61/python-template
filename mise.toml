@@ -1,5 +1,5 @@
 [tools]
-uv = "0.11"
+uv = "0.12"
 task = "3"
 node = "22"
 pnpm = "11"
@@ -7,5 +7,10 @@ pnpm = "11"
 [env]
 # Stop ad-hoc `uv run` from rewriting uv.lock. The lockfile changes
 # deliberately, via `uv lock` or the release-please sync-lockfile job.
+#
+# Note the interaction: `uv sync --locked`, which CI runs, is a hard error
+# while this is set -- uv refuses --locked and UV_FROZEN together. CI never
+# loads mise so it never sees this. Locally, assert freshness with
+# `uv lock --check`, or `env -u UV_FROZEN uv sync --locked` to mirror CI.
 UV_FROZEN = "1"
 _.python.venv = ".venv"

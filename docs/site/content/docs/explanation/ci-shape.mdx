@@ -18,7 +18,7 @@ until someone remembers to add it in a second place, and nobody notices the gap
 because both files look maintained. Running the hook file directly means
 `task dev:hooks` and CI cannot disagree.
 
-`uv sync --frozen` runs before the hook action because the `ruff`, `ty` and
+`uv sync --locked` runs before the hook action because the `ruff`, `ty` and
 `pytest` hooks are `uv run --no-sync`, so they need the virtualenv to exist.
 
 ## `zizmor` gets its own job
