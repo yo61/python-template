@@ -17,6 +17,15 @@ fail() {
   exit 1
 }
 
+# uv with UV_FROZEN cleared, resolved past any mise shim -- mirrors bootstrap's
+# helper. The freshness check below is worthless without it: run from the
+# mise-activated repo, UV_FROZEN=1 is exported into the generated project, where
+# `uv lock --check` degrades to a warning and exits 0. A generated project with
+# a stale lockfile would pass the very check added to catch it.
+uv_unfrozen() {
+  env -u UV_FROZEN "$(mise which uv 2> /dev/null || command -v uv)" "$@"
+}
+
 run_case() {
   local name=$1
   shift
@@ -84,7 +93,7 @@ $leaks"
   grep -q "basePath = process.env.BASE_PATH ?? '/my-tool'" \
     "$dir/docs/site/next.config.mjs" || fail "$name: Fumadocs basePath not rewritten"
 
-  (cd "$dir" && uv lock --check && uv sync --quiet && task dev:check) || fail "$name: task dev:check failed"
+  (cd "$dir" && uv_unfrozen lock --check && uv sync --quiet && task dev:check) || fail "$name: task dev:check failed"
 
   if [[ "$name" = flat ]]; then
     # The Fumadocs basePath is the most breakage-prone placeholder in the
