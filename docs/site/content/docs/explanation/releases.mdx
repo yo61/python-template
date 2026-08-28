@@ -66,8 +66,75 @@ signature requirement. The request is assembled with `jq --rawfile` and
 submitted via `gh api graphql --input`, which sidesteps the argument-length
 limit.
 
-This is the one place `UV_FROZEN` is set to `0`. Everywhere else it is `1`, so
-the lockfile changes only deliberately.
+### Finding the Release PR
+
+The job locates the Release PR by listing open pull requests and selecting
+the one authored by the release App, on a `release-please--branches--` head
+branch, carrying the `autorelease: pending` label — not by release-please's
+`prs` output. That output is set only when release-please
+actually updated a pull request, and it declines to update when the
+regenerated body is unchanged — so a push carrying only hidden commit types
+(`chore`, `ci`, `docs`, `style`, `refactor`, `test`, `build`) reports nothing.
+
+The author is matched on `is_bot` plus a substring rather than an exact
+login, because GitHub renders that one identity three different ways —
+`gh pr list --json author` gives `app/semantic-release-pusher`, the REST API
+gives `semantic-release-pusher[bot]`, and GraphQL's `Bot.login` gives
+`semantic-release-pusher`. Only the first is what the step reads, and an
+exact comparison against either of the others fails silently.
+
+A same-repo PR on a `release-please--branches--` branch that the selector
+does *not* match fails the job rather than passing quietly, since that means
+the selector is wrong rather than that there is nothing to sync.
+
+The selector checks author and branch prefix, not the label alone. A label
+is mutable by anyone with write access, and the step that follows runs
+`uv lock`, which executes build backends out of the branch it checked out —
+so the label by itself is not a safe way to choose what code to run. The
+`uv lock` step deliberately carries no token; only the step that commits,
+which touches no project code, gets one.
+
+The list is fetched with `--limit 200`. `gh pr list` defaults to 30, ordered
+newest-first, and the Release PR is long-lived — it is the oldest open PR, so
+it sorts last and would drop off page one on a busy repository, leaving the
+job to exit green having synced nothing.
+
+It lists pull requests unfiltered and selects locally, rather than passing
+`--label` to `gh`. That flag resolves through GitHub's search
+API, which is index-lagged and can miss a PR release-please created seconds
+earlier in the preceding job; the unfiltered listing reads
+`repository.pullRequests` directly and is read-your-writes.
+
+The distinction matters when a sync is missed. Gating on `prs` means that a
+transient failure is followed by however many pushes it takes for the next
+`feat` or `fix` to arrive, with the Release PR carrying a stale lockfile the
+whole time. "Is there an open Release PR?" is the precondition the job
+actually cares about, and asking it that way makes the job idempotent: it
+re-runs until the lockfile is in sync and exits quietly once it is.
+
+### Freshness elsewhere
+
+The relock step *unsets* `UV_FROZEN` rather than setting it to `0`.
+Everywhere else it is `1`, so the lockfile changes only deliberately — but a
+step that sets the variable and then runs `uv lock --check` is asserting with
+the very thing it is checking: at `1`, `uv lock` no-ops and `uv lock --check`
+degrades to a warning, both exiting 0. Unsetting makes the assertion
+independent of the environment. Locally the same job is done by
+`task uv:lock`.
+
+The `lint` and `pytest` jobs run `uv sync --locked`, which fails when
+`uv.lock` no longer matches `pyproject.toml`. The distinction is easy to miss:
+`--frozen` installs from the lockfile *without* checking that it is current,
+so drift merges silently; `--locked` asserts freshness and errors. (The
+`bootstrap` job is the exception — it re-locks a freshly renamed project, so
+it runs plain `uv sync`.)
+
+The uv version comes from `tool.uv.required-version` in `pyproject.toml`.
+`setup-uv` reads that key, so CI and this job install the same series that
+`mise.toml` supplies locally. The pin is to the *minor* series deliberately:
+mise withholds releases younger than its `minimum_release_age`, so a pin to
+the newest patch resolves to something mise will not install for days, leaving
+CI green while every local uv command refuses to run.
 
 ## Publishing
 
