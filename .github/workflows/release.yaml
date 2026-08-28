@@ -90,8 +90,18 @@ jobs:
           set -euo pipefail
           gh pr list --state open --limit 200 \
             --json headRefName,labels,author,isCrossRepository > /tmp/prs.json
+          # Matched on is_bot plus a substring, not an exact login. GitHub
+          # renders this one identity three ways and it is easy to "fix" this
+          # comparison into a silent no-match:
+          #   gh pr list --json author  -> app/semantic-release-pusher
+          #   REST pulls/{n} user.login -> semantic-release-pusher[bot]
+          #   GraphQL Bot.login         -> semantic-release-pusher
+          # Only the first is what this step reads. The substring match holds
+          # for all three, so gh changing its normalisation cannot silently
+          # break the lookup.
           filter='map(select(
-            .author.login == "app/semantic-release-pusher" and
+            .author.is_bot == true and
+            (.author.login | contains("semantic-release-pusher")) and
             .isCrossRepository == false and
             (.headRefName | startswith("release-please--branches--")) and
             ((.labels // []) | any(.name == "autorelease: pending"))))'
@@ -103,6 +113,21 @@ jobs:
           fi
           branch=$(jq -r "$filter | .[0].headRefName // empty" /tmp/prs.json)
           if [[ -z "$branch" ]]; then
+            # An open PR on a release branch that the selector did not match
+            # means the selector is wrong, not that there is nothing to do.
+            # Exiting green there is the failure this whole job exists to
+            # avoid, so make it loud and print what was actually seen.
+            # Scoped to same-repo PRs: a fork cannot create a branch here, so
+            # a drive-by fork PR named release-please--branches--* must not be
+            # able to fail every release run.
+            if jq -e 'any(.isCrossRepository == false and (.headRefName |
+                startswith("release-please--branches--")))' /tmp/prs.json > /dev/null; then
+              jq -r '.[] | select(.isCrossRepository == false and (.headRefName |
+                startswith("release-please--branches--"))) |
+                "\(.headRefName) author=\(.author.login) bot=\(.author.is_bot) labels=\([.labels[]?.name] | join(","))"' /tmp/prs.json
+              echo "::error::a release-branch PR is open but the selector did not match it"
+              exit 1
+            fi
             echo "no open Release PR; nothing to sync"
           else
             echo "Release PR branch: $branch"

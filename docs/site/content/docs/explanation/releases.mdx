@@ -76,6 +76,17 @@ actually updated a pull request, and it declines to update when the
 regenerated body is unchanged — so a push carrying only hidden commit types
 (`chore`, `ci`, `docs`, `style`, `refactor`, `test`, `build`) reports nothing.
 
+The author is matched on `is_bot` plus a substring rather than an exact
+login, because GitHub renders that one identity three different ways —
+`gh pr list --json author` gives `app/semantic-release-pusher`, the REST API
+gives `semantic-release-pusher[bot]`, and GraphQL's `Bot.login` gives
+`semantic-release-pusher`. Only the first is what the step reads, and an
+exact comparison against either of the others fails silently.
+
+A same-repo PR on a `release-please--branches--` branch that the selector
+does *not* match fails the job rather than passing quietly, since that means
+the selector is wrong rather than that there is nothing to sync.
+
 The selector checks author and branch prefix, not the label alone. A label
 is mutable by anyone with write access, and the step that follows runs
 `uv lock`, which executes build backends out of the branch it checked out —
