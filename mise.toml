@@ -5,12 +5,15 @@ node = "22"
 pnpm = "11"
 
 [env]
-# Stop ad-hoc `uv run` from rewriting uv.lock. The lockfile changes
-# deliberately, via `uv lock` or the release-please sync-lockfile job.
+# Stop ad-hoc `uv run` from rewriting uv.lock as a side effect. The lockfile
+# changes deliberately: `task uv:lock` locally, or the release-please
+# sync-lockfile job in CI.
 #
-# Note the interaction: `uv sync --locked`, which CI runs, is a hard error
-# while this is set -- uv refuses --locked and UV_FROZEN together. CI never
-# loads mise so it never sees this. Locally, assert freshness with
-# `uv lock --check`, or `env -u UV_FROZEN uv sync --locked` to mirror CI.
+# This value also disables the commands you would reach for to work around it.
+# `uv lock` becomes a no-op that exits 0, and `uv lock --check` degrades to a
+# warning that still exits 0 -- so neither reports drift. `uv sync --locked`,
+# which CI runs, is a hard error here. CI never loads mise, so it sees none of
+# this. `task uv:lock` lifts UV_FROZEN for exactly one command; use it rather
+# than fighting the variable.
 UV_FROZEN = "1"
 _.python.venv = ".venv"

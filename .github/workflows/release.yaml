@@ -3,6 +3,10 @@ name: Release
 on:
   push:
     branches: [main]
+  # Manual retry. If the sync fails, the Release PR sits red on the required
+  # checks and the only other trigger is a push to main -- which needs a whole
+  # PR through the ruleset first.
+  workflow_dispatch:
 
 # Serialise release runs. Two rapid pushes to main otherwise race: the second
 # force-updates the release PR branch while the first is mid-flight, and the
@@ -90,6 +94,14 @@ jobs:
           set -euo pipefail
           gh pr list --state open --limit 200 \
             --json headRefName,labels,author,isCrossRepository > /tmp/prs.json
+          # A full page means the list was truncated. The Release PR is the
+          # oldest open PR, so it is precisely the one that falls off the end --
+          # and the loud check below reads this same file, so it cannot cover
+          # the case either. Fail rather than sync nothing quietly.
+          if [[ "$(jq length /tmp/prs.json)" -ge 200 ]]; then
+            echo "::error::open PR list hit the 200 limit; raise it -- the Release PR may not be in this page"
+            exit 1
+          fi
           # Matched on is_bot plus a substring, not an exact login. GitHub
           # renders this one identity three ways and it is easy to "fix" this
           # comparison into a silent no-match:
@@ -125,7 +137,7 @@ jobs:
               jq -r '.[] | select(.isCrossRepository == false and (.headRefName |
                 startswith("release-please--branches--"))) |
                 "\(.headRefName) author=\(.author.login) bot=\(.author.is_bot) labels=\([.labels[]?.name] | join(","))"' /tmp/prs.json
-              echo "::error::a release-branch PR is open but the selector did not match it"
+              echo "::error::a release-branch PR is open but the selector did not match it; check the autorelease label and release-please's label config, then re-run this workflow"
               exit 1
             fi
             echo "no open Release PR; nothing to sync"
@@ -153,14 +165,16 @@ jobs:
       - if: steps.pr_branch.outputs.branch != ''
         id: relock
         name: Re-lock uv.lock
-        env:
-          UV_FROZEN: "0"
         run: |
           set -euo pipefail
+          # Unset rather than set to "0". UV_FROZEN=1 turns `uv lock` into a
+          # no-op that exits 0 AND degrades `uv lock --check` to a warning that
+          # also exits 0 -- so an assertion made while trusting the variable is
+          # disabled by exactly the condition it exists to detect. Unsetting
+          # makes both the lock and the assertion independent of the ambient
+          # environment, which is the only way the guard means anything.
+          unset UV_FROZEN
           uv lock
-          # UV_FROZEN=1 turns `uv lock` into a no-op that still exits 0, so a
-          # wrong value here would report "already in sync" having done
-          # nothing. Assert the result rather than trusting the env.
           uv lock --check
           if [[ -z "$(git status --porcelain uv.lock)" ]]; then
             echo "uv.lock already in sync"
