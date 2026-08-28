@@ -53,14 +53,13 @@ when the two differ; `hatchling` is told the path outright.
 
 ### Relock
 
-The backend is a build dependency, so it is recorded in `uv.lock`:
+Nothing to do. Build backends are resolved by the build frontend at build
+time, not locked as project dependencies — `uv.lock` records neither
+`uv_build` nor `hatchling`, and relocking after this swap produces no diff.
 
-```bash
-uv lock
-```
-
-`UV_FROZEN=1` is exported by `mise.toml` to stop stray `uv run` calls from
-rewriting the lockfile. `uv lock` is the deliberate path and is unaffected.
+If you change project *dependencies* while you are here, re-lock with
+`task uv:lock`. Plain `uv lock` will not do it: `mise.toml` exports
+`UV_FROZEN=1`, under which `uv lock` silently no-ops and still exits 0.
 
 ## Verification
 

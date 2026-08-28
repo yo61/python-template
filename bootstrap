@@ -67,6 +67,19 @@ for pair in "PROJECT_NAME:$PROJECT_NAME" "CLI_NAME:$CLI_NAME"; do
   }
 done
 
+# uv with UV_FROZEN cleared, resolved past any mise shim. Used only where uv
+# must write uv.lock. An explicit `UV_FROZEN=0` is not sufficient: if uv on PATH
+# is a mise shim it re-derives [env] from mise.toml inside the child process and
+# restores the "1", so the write is silently skipped. Same reasoning as
+# Taskfile.yml's uv:lock task.
+#
+# The final `uv sync` does NOT need this: the substitution above rewrites the
+# project name inside uv.lock as well, so the lockfile is already consistent
+# with the renamed pyproject.toml and --frozen is satisfied.
+uv_unfrozen() {
+  env -u UV_FROZEN "$(mise which uv 2> /dev/null || command -v uv)" "$@"
+}
+
 # Everything past this point rewrites the tree in place, so a failure leaves
 # a half-converted checkout. Say how to get back rather than dying silently.
 recover() {
@@ -280,9 +293,10 @@ if $WANT_DDD; then
   # between the marker and end of file.
   sed -i.bak '/^# \[tool.importlinter\]/,$ s/^# \{0,1\}//' pyproject.toml
   rm -f pyproject.toml.bak
-  # UV_FROZEN=1 comes from mise.toml and makes `uv add` refuse to touch
-  # the lockfile. Override for this one call.
-  UV_FROZEN=0 uv add --dev --quiet 'import-linter>=2'
+  # `uv add` does not refuse under UV_FROZEN=1 -- it rewrites pyproject.toml,
+  # leaves uv.lock stale and still exits 0 -- so clearing the variable is what
+  # keeps the two in step, not a way past a hard error.
+  uv_unfrozen add --dev --quiet 'import-linter>=2'
   python3 << 'PY'
 import pathlib
 

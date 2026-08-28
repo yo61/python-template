@@ -114,8 +114,13 @@ re-runs until the lockfile is in sync and exits quietly once it is.
 
 ### Freshness elsewhere
 
-`UV_FROZEN` is `0` for this one step. Everywhere else it is `1`, so the
-lockfile changes only deliberately.
+The relock step *unsets* `UV_FROZEN` rather than setting it to `0`.
+Everywhere else it is `1`, so the lockfile changes only deliberately — but a
+step that sets the variable and then runs `uv lock --check` is asserting with
+the very thing it is checking: at `1`, `uv lock` no-ops and `uv lock --check`
+degrades to a warning, both exiting 0. Unsetting makes the assertion
+independent of the environment. Locally the same job is done by
+`task uv:lock`.
 
 The `lint` and `pytest` jobs run `uv sync --locked`, which fails when
 `uv.lock` no longer matches `pyproject.toml`. The distinction is easy to miss:

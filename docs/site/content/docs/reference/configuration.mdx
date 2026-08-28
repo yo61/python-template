@@ -40,7 +40,11 @@ A commented-out `[tool.importlinter]` block sits at the end of the file. See
 
 Pins the toolchain — `uv`, `task`, `node`, `pnpm` — and exports `UV_FROZEN=1`
 shell-wide so a stray `uv run` cannot silently rewrite `uv.lock`. The lockfile
-changes only via `uv lock`, or the release workflow's `sync-lockfile` job.
+changes only via `task uv:lock`, or the release workflow's `sync-lockfile`
+job. Note that plain `uv lock` is *not* the escape hatch it looks like: with
+`UV_FROZEN=1` set it becomes a no-op that still exits 0, as does
+`uv lock --check`. `task uv:lock` resolves past any mise shim and clears the
+variable for that one command.
 
 ## .pre-commit-config.yaml
 
@@ -70,6 +74,6 @@ a visible section is also a releasable one.
 
 | Variable | Set by | Effect |
 | --- | --- | --- |
-| `UV_FROZEN` | `mise.toml`, `Taskfile.yml` | `1` stops `uv` rewriting the lockfile. The release workflow sets `0` for the one job that must. |
+| `UV_FROZEN` | `mise.toml`, `Taskfile.yml` | `1` stops `uv` rewriting the lockfile. The release workflow *unsets* it for the one step that must — setting it to `0` would leave that step's `uv lock --check` assertion trusting the same variable it is meant to check. |
 | `BASE_PATH` | `Taskfile.yml` docs tasks | Empty strips the Pages basePath for local serving. |
 | `SITE_URL` | `Taskfile.yml` `docs:serve` | Overrides the canonical site URL locally. |

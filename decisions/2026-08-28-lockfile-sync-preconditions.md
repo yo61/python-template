@@ -46,6 +46,16 @@ not have repaired it.
   in the preceding job. Listing unfiltered hits `repository.pullRequests` and
   is read-your-writes; the label is matched locally in `jq`.
 
+- **`workflow_dispatch` for manual retry.** Added, then removed. GitHub's
+  "Re-run failed jobs" already retries a failed sync, and does it better — it
+  reuses the successful `release-please` job's cached outputs rather than
+  re-executing it. Meanwhile the trigger accepts any ref, which both widened
+  who can run the workflow that mints the release App token and broke the
+  `concurrency` group: keyed on `github.ref`, a dispatch from a non-default
+  branch lands in a different group and races the push-triggered run, while
+  release-please still targets the default branch either way. Net capability
+  gain: none.
+
 ## Reasoning
 
 "Did release-please just update a PR?" is a proxy. "Is there an open Release PR
@@ -53,6 +63,15 @@ whose lockfile might be stale?" is the job's actual precondition. Asking the
 real question makes the job idempotent — it re-runs until the lockfile is in
 sync and exits quietly once it is — and removes the dependence on release-please
 having something new to say.
+
+A guard has to be independent of the state it guards. Three separate bugs in
+this change were the same shape: an assertion that consults the condition it is
+meant to detect. `uv lock --check` run with `UV_FROZEN` set (which disables
+both the lock and the check); a `concurrency` group keyed on the ref that a new
+trigger made variable; a loud-failure check reading the same possibly-truncated
+file as the lookup it validates. The fixes are all the same move — `unset`
+rather than set-to-zero, a constant group key, a check on the file itself
+before anything derived from it.
 
 `--locked` is the same class of error one layer up: `--frozen` installs from
 the lockfile without checking that it is current, so drift merged silently and

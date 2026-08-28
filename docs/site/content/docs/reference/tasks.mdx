@@ -16,7 +16,7 @@ so you can read it without a checkout.
 | `task dev:fmt-check` | `ruff format --check src tests` — fails without rewriting. |
 | `task dev:typecheck` | `ty check src` |
 | `task dev:test` | `pytest` |
-| `task uv:lock` | `uv lock` with `UV_FROZEN` lifted — the only command that may rewrite `uv.lock`. |
+| `task uv:lock` | `uv lock` with `UV_FROZEN` lifted and any mise shim bypassed — the deliberate way to rewrite `uv.lock`. (`uv sync` also rewrites it wherever `UV_FROZEN` is absent, which is every CI job.) |
 
 `task dev:check` is the single gate. CI runs the same tools, and the bootstrap
 smoke test runs `task dev:check` inside each generated project — so if it

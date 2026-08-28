@@ -3,17 +3,18 @@ name: Release
 on:
   push:
     branches: [main]
-  # Manual retry. If the sync fails, the Release PR sits red on the required
-  # checks and the only other trigger is a push to main -- which needs a whole
-  # PR through the ruleset first.
-  workflow_dispatch:
 
 # Serialise release runs. Two rapid pushes to main otherwise race: the second
 # force-updates the release PR branch while the first is mid-flight, and the
 # first's createCommitOnBranch fails its expectedHeadOid. Queue rather than
 # cancel -- cancelling a run part-way through publishing is worse than waiting.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # Deliberately not keyed on github.ref. This workflow only ever acts on the
+  # default branch -- release-please's target-branch defaults to it regardless
+  # of the ref the run started from -- so a ref-keyed group would put a run
+  # started from anywhere else into a separate group and let it race the very
+  # thing this block serialises.
+  group: ${{ github.workflow }}
   cancel-in-progress: false
 
 permissions: {}
@@ -78,7 +79,7 @@ jobs:
       #      can miss a PR release-please created seconds earlier in the
       #      previous job. The unfiltered list hits repository.pullRequests
       #      and is read-your-writes.
-      #   2. --limit 200. The default is 30, ordered CREATED_AT DESC. The
+      #   2. --limit 201. The default is 30, ordered CREATED_AT DESC. The
       #      Release PR is long-lived, so it is the OLDEST open PR and sorts
       #      last -- on a busy repo it drops off page one and the job exits
       #      green having synced nothing.
@@ -92,14 +93,21 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          gh pr list --state open --limit 200 \
+          gh pr list --state open --limit 201 \
             --json headRefName,labels,author,isCrossRepository > /tmp/prs.json
-          # A full page means the list was truncated. The Release PR is the
-          # oldest open PR, so it is precisely the one that falls off the end --
-          # and the loud check below reads this same file, so it cannot cover
-          # the case either. Fail rather than sync nothing quietly.
-          if [[ "$(jq length /tmp/prs.json)" -ge 200 ]]; then
-            echo "::error::open PR list hit the 200 limit; raise it -- the Release PR may not be in this page"
+          # Every guard below reads this file, so an empty or truncated fetch
+          # would make all of them agree there is nothing to do -- the exact
+          # silent-green outcome this job exists to prevent. Check the file
+          # itself before trusting anything derived from it.
+          if [[ ! -s /tmp/prs.json ]]; then
+            echo "::error::gh pr list produced no output"
+            exit 1
+          fi
+          # 201 requested, so >200 is unambiguously truncation rather than a
+          # repo that happens to have exactly the limit open. The Release PR is
+          # the oldest open PR, so it is precisely the one that falls off.
+          if [[ "$(jq length /tmp/prs.json)" -gt 200 ]]; then
+            echo "::error::open PR list was truncated; raise the limit -- the Release PR may not be in this page"
             exit 1
           fi
           # Matched on is_bot plus a substring, not an exact login. GitHub

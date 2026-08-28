@@ -84,7 +84,7 @@ $leaks"
   grep -q "basePath = process.env.BASE_PATH ?? '/my-tool'" \
     "$dir/docs/site/next.config.mjs" || fail "$name: Fumadocs basePath not rewritten"
 
-  (cd "$dir" && uv sync --quiet && uv lock --check && task dev:check) || fail "$name: task dev:check failed"
+  (cd "$dir" && uv lock --check && uv sync --quiet && task dev:check) || fail "$name: task dev:check failed"
 
   if [[ "$name" = flat ]]; then
     # The Fumadocs basePath is the most breakage-prone placeholder in the
