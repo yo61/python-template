@@ -161,3 +161,9 @@ Two things have to be true before the Release workflow can do anything:
   using PyPI trusted publishing. Without the two secrets the release PR is
   never opened; without the environment (and a matching trusted publisher on
   PyPI) the publish step fails.
+
+Publishing is opt-out. A project that will never go to PyPI runs
+`gh variable set PYPI_PUBLISH --body false` and the `publish` job skips; unset
+— which is how every repository starts, since *Use this template* copies no
+variables — publishes. This template repository is opted out, because there is
+no `python-template` distribution for its trusted-publishing exchange to match.

@@ -244,7 +244,25 @@ jobs:
 
   publish:
     needs: release-please
-    if: needs.release-please.outputs.release_created == 'true'
+    # Publishing is opt-OUT, and the switch is a repository variable rather
+    # than anything in this file. A project that will never go to PyPI runs
+    # `gh variable set PYPI_PUBLISH --body false` and this job skips; unset --
+    # which reads as the empty string, and is how every repository starts --
+    # publishes.
+    #
+    # The variable is the switch precisely because repository settings do not
+    # travel. "Use this template" copies files and branches, never variables,
+    # secrets or environments, so an opt-out set on the template repository
+    # cannot reach a project generated from it: the default is structural, not
+    # something a script has to remember to undo. See the Releases explanation
+    # in docs/ for the alternatives that were rejected.
+    #
+    # Compared against the exact string "false". Actions compares
+    # case-insensitively, so "False" and "FALSE" opt out too -- but "0", "no"
+    # and "off" do not, and publish.
+    if: >-
+      needs.release-please.outputs.release_created == 'true'
+      && vars.PYPI_PUBLISH != 'false'
     runs-on: ubuntu-latest
     environment:
       name: pypi

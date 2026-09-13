@@ -141,5 +141,32 @@ CI green while every local uv command refuses to run.
 The `publish` job builds with `uv build` and uploads via
 `pypa/gh-action-pypi-publish` using trusted publishing — OIDC, no API token
 stored anywhere. It needs a `pypi` environment on the repository and a
-matching trusted publisher configured on PyPI. Until both exist, the job fails;
-a project that will never publish should delete it.
+matching trusted publisher configured on PyPI. Until both exist, the job
+fails.
+
+### Opting out
+
+Publishing is opt-out. A project that will never publish sets a repository
+variable:
+
+```bash
+gh variable set PYPI_PUBLISH --body false
+```
+
+The job's condition is `vars.PYPI_PUBLISH != 'false'`, so an unset variable —
+the state every repository starts in — publishes. The comparison is against
+the exact string `false`; Actions compares case-insensitively, so `False`
+works too, but `0` and `no` do not and would publish.
+
+It is a repository variable rather than a file in the tree on purpose.
+GitHub's *Use this template* copies files and branches, never variables,
+secrets or environments, so the opt-out cannot follow a generated project — it
+starts publishing-enabled whatever the template does. A marker file would be
+copied across and would depend on `./bootstrap` to remove it, and a
+`github.repository` comparison would be rewritten by bootstrap's placeholder
+sweep and silently disable the new project's publishing for good.
+
+The template repository is itself opted out. It has no
+distribution of its own on PyPI, so the trusted-publishing exchange found no
+publisher matching its OIDC claims and every release it cut ended on a red
+`invalid-publisher`.
