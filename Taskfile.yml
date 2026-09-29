@@ -56,9 +56,13 @@ tasks:
   #      `command -v` covers the case where uv is not mise-managed at all.
   uv:lock:
     desc: 'Re-lock uv.lock; the only command that should change it'
-    summary: |
-      Re-lock uv.lock. The only command that should change it; UV_FROZEN is "1"
-      elsewhere so nothing rewrites the lockfile as a side effect.
+    summary: >-
+      The only command that changes uv.lock. UV_FROZEN="1" is set in the Taskfile env block and
+      again in mise.toml, so every other uv call here resolves against the lockfile and cannot
+      rewrite it as a side effect — a deliberate bump comes through this task. Making that work
+      takes both halves of the command: a task-level env: cannot override a variable already in
+      the OS environment, hence `env -u`, and a mise shim would re-derive UV_FROZEN inside the
+      child process, hence `mise which uv` to reach the real binary.
     cmds:
       - env -u UV_FROZEN "$(mise which uv 2>/dev/null || command -v uv)" lock
 
@@ -74,9 +78,13 @@ tasks:
 
   docs:dev:
     desc: 'Run the Fumadocs site locally with hot reload at http://localhost:3000'
-    summary: |
-      Run the Fumadocs site locally with hot reload at http://localhost:3000.
-      Strips the GitHub Pages basePath so assets resolve under root.
+    summary: >-
+      Serves the Fumadocs site at http://localhost:3000 with hot reload — the one to use while
+      writing docs. BASE_PATH= overrides the /python-template default that
+      docs/site/next.config.mjs sets, so assets resolve at the root instead of under
+      /python-template/_next/..., which is what makes localhost work at all. For a production
+      build instead: docs:serve to look at one, docs:build to reproduce what CI publishes,
+      basePath and all.
     dir: docs/site
     cmds:
       - BASE_PATH= pnpm dev
