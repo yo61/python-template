@@ -12,31 +12,53 @@ tasks:
 
   dev:lint:
     desc: Run ruff check
+    summary: >-
+      ruff check over src and tests. It reports and does not fix; there is no --fix here, so a
+      lint failure is yours to resolve.
     cmds:
       - uv run ruff check src tests
 
   dev:fmt:
     desc: Apply ruff format
+    summary: >-
+      ruff format over src and tests, rewriting files in place. dev:fmt-check is the same rules
+      without the rewrite, and that is what the gate runs.
     cmds:
       - uv run ruff format src tests
 
   dev:fmt-check:
     desc: Check formatting without rewriting
+    summary: >-
+      Fails if anything is unformatted, without touching a file — the form dev:check runs. Note
+      the pre-commit hook does NOT use this form: it runs `ruff format` with no --check, so it
+      rewrites the file and then reports the hook as failed. So a commit can reformat under you;
+      this task is the one that only reports.
     cmds:
       - uv run ruff format --check src tests
 
   dev:typecheck:
     desc: Run ty type checker
+    summary: >-
+      ty over src only. Note the asymmetry with dev:lint, which also covers tests: a type error in
+      a test is not caught here, or anywhere else in the gate.
     cmds:
       - uv run ty check src
 
   dev:test:
     desc: Run the pytest suite
+    summary: >-
+      pytest with no arguments, so pyproject decides: testpaths is tests, with --strict-markers
+      and --strict-config, which turn an unregistered marker or an unknown config key into an
+      error rather than a warning.
     cmds:
       - uv run pytest
 
   dev:check:
     desc: Full quality gate — lint, format-check, typecheck, tests
+    summary: >-
+      The whole gate in order: lint, format-check, typecheck, tests. It stops at the first
+      failure, so a later stage can still be broken once an earlier one passes. It uses fmt-check
+      rather than fmt, so it never rewrites a file.
     cmds:
       - task: dev:lint
       - task: dev:fmt-check
@@ -56,33 +78,53 @@ tasks:
   #      `command -v` covers the case where uv is not mise-managed at all.
   uv:lock:
     desc: 'Re-lock uv.lock; the only command that should change it'
-    summary: |
-      Re-lock uv.lock. The only command that should change it; UV_FROZEN is "1"
-      elsewhere so nothing rewrites the lockfile as a side effect.
+    summary: >-
+      The only command that changes uv.lock. UV_FROZEN="1" is set in the Taskfile env block and
+      again in mise.toml, so every other uv call here resolves against the lockfile and cannot
+      rewrite it as a side effect — a deliberate bump comes through this task. Making that work
+      takes both halves of the command: a task-level env: cannot override a variable already in
+      the OS environment, hence `env -u`, and a mise shim would re-derive UV_FROZEN inside the
+      child process, hence `mise which uv` to reach the real binary.
     cmds:
       - env -u UV_FROZEN "$(mise which uv 2>/dev/null || command -v uv)" lock
 
   dev:hooks:
     desc: Run all prek hooks against every file
+    summary: >-
+      Runs the prek hooks that apply at the default stage, against every file rather than just
+      the staged ones. Not every hook: this config has two that are stage-restricted, and `prek
+      run --all-files` without --stage skips them. Use it to check the tree before pushing,
+      knowing it is not the whole hook set.
     cmds:
       - prek run --all-files
 
   dev:hooks-install:
     desc: Install git hooks (pre-commit, commit-msg, pre-push)
+    summary: >-
+      Installs the pre-commit, commit-msg and pre-push hooks. Run once per clone; nothing else
+      here does it for you.
     cmds:
       - prek install --hook-type pre-commit --hook-type commit-msg --hook-type pre-push
 
   docs:dev:
     desc: 'Run the Fumadocs site locally with hot reload at http://localhost:3000'
-    summary: |
-      Run the Fumadocs site locally with hot reload at http://localhost:3000.
-      Strips the GitHub Pages basePath so assets resolve under root.
+    summary: >-
+      Serves the Fumadocs site at http://localhost:3000 with hot reload — the one to use while
+      writing docs. BASE_PATH= overrides the /python-template default that
+      docs/site/next.config.mjs sets, so assets resolve at the root instead of under
+      /python-template/_next/..., which is what makes localhost work at all. For a production
+      build instead: docs:serve to look at one, docs:build to reproduce what CI publishes,
+      basePath and all.
     dir: docs/site
     cmds:
       - BASE_PATH= pnpm dev
 
   docs:serve:
     desc: Production-build the site without basePath and serve it locally.
+    summary: >-
+      Production-builds the site with no basePath and serves it at http://localhost:3000 — use it
+      to check the built output before pushing, when hot reload might be masking a build-only
+      problem. For editing use docs:dev; to reproduce exactly what CI publishes use docs:build.
     dir: docs/site
     cmds:
       - BASE_PATH= SITE_URL=http://localhost:3000 pnpm build
@@ -90,6 +132,11 @@ tasks:
 
   docs:build:
     desc: Production build with the /python-template basePath, matching CI.
+    summary: >-
+      Production-builds the site the way CI does, keeping the /python-template basePath that
+      docs/site/next.config.mjs defaults to. It is for checking the build, not for viewing it —
+      served locally, that basePath makes the assets 404. Use docs:serve to look at the output and
+      docs:dev to edit.
     dir: docs/site
     cmds:
       - pnpm build
