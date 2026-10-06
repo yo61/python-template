@@ -8,7 +8,7 @@ license-files = ["LICENSE"]
 requires-python = ">=3.11"
 authors = [{ name = "Robin Bowes" }]
 dependencies = [
-    "cyclopts>=4.25.3",
+    "cyclopts>=5.1.0",
 ]
 
 [project.scripts]
