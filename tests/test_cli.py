@@ -51,3 +51,26 @@ def test_complete_fast_path_does_not_build_the_app(capsys, monkeypatch):
 
 def test_get_app_is_memoised():
     assert cli.get_app() is cli.get_app()
+
+
+def test_complete_through_the_app_proxy_answers_from_our_handler(capsys):
+    """cyclopts 5 reserves `__complete`; the proxy must route it to ours first."""
+    cli.app(["__complete", "hel"])
+    assert capsys.readouterr().out.split() == ["hello"]
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        pytest.param(["bogus"], id="unknown-command"),
+        pytest.param(["--bogus"], id="unknown-flag"),
+        pytest.param(["Hello", "Robin"], id="wrong-case-command"),
+        pytest.param(["hello", "--nope"], id="unknown-command-flag"),
+    ],
+)
+def test_a_usage_error_exits_2(monkeypatch, argv):
+    """Distinct from the exit 1 a command failure gets."""
+    monkeypatch.setattr(sys, "argv", ["python-template", *argv])
+    with pytest.raises(SystemExit) as exc:
+        cli.main()
+    assert exc.value.code == 2

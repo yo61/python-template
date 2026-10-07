@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+from collections.abc import Sequence
 from typing import Any
 
 _TOP_LEVEL_COMMANDS = ("hello",)
@@ -42,7 +43,6 @@ def _build_app() -> Any:
         print(cmd_hello.run(name, shout=shout))
 
     app.command(hello, name="hello")
-    app.command(_complete, name="__complete", show=False)
     return app
 
 
@@ -52,6 +52,18 @@ def _complete(*tokens: str) -> None:
     for candidate in _TOP_LEVEL_COMMANDS:
         if candidate.startswith(prefix):
             print(candidate)
+
+
+def _dispatch_complete(tokens: Sequence[str]) -> bool:
+    """Run `_complete` if `tokens` request it; return whether it ran.
+
+    cyclopts 5 reserves `__complete` for its own completion engine and claims it
+    before command lookup, so this protocol is dispatched ahead of cyclopts.
+    """
+    if list(tokens[:1]) != ["__complete"]:
+        return False
+    _complete(*tokens[1:])
+    return True
 
 
 _app_cache: Any = None
@@ -67,13 +79,14 @@ def get_app() -> Any:
 
 def app(*args: Any, **kwargs: Any) -> Any:
     """Proxy so the lazy build stays transparent to callers and tests."""
+    if args and isinstance(args[0], (list, tuple)) and _dispatch_complete(args[0]):
+        return None
     return get_app()(*args, **kwargs)
 
 
 def main() -> None:
-    """Entry point. Turns known exceptions into clean stderr lines, exit 1."""
-    if len(sys.argv) >= 2 and sys.argv[1] == "__complete":
-        _complete(*sys.argv[2:])
+    """Entry point. Usage errors exit 2; known exceptions become one stderr line, exit 1."""
+    if _dispatch_complete(sys.argv[1:]):
         return
 
     try:

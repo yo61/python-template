@@ -26,14 +26,19 @@ once thirty command modules import at module scope.
 `main()` inspects `sys.argv` before doing anything else:
 
 ```python
-if len(sys.argv) >= 2 and sys.argv[1] == "__complete":
-    _complete(*sys.argv[2:])
+if _dispatch_complete(sys.argv[1:]):
     return
 ```
 
+`_dispatch_complete` runs `_complete` when the first token is `__complete`.
 `_complete` prints candidates from `_TOP_LEVEL_COMMANDS`, a plain tuple of
 strings. No cyclopts import, no `App`, no command modules. Adding a command
 means adding its name to that tuple.
+
+The `app()` proxy calls `_dispatch_complete` too, and `__complete` is never
+registered as a cyclopts command. cyclopts 5 reserves that name for its own
+completion engine and claims it before command lookup, so a registered handler
+would never run.
 
 The template ships the fast path but not the shell stubs that call it. Wiring
 `__complete` into bash or zsh completion is left to projects that want it.
