@@ -19,7 +19,7 @@ dev = [
     "hypothesis>=6.168.3",
     "pytest>=8",
     "pytest-cov>=5",
-    "ruff>=0.16.9",
+    "ruff>=0.16.10",
     "ty>=0.0.84",
 ]
 
