@@ -3,6 +3,11 @@
 ## [0.1.3](https://github.com/yo61/python-template/compare/v0.1.2...v0.1.3) (2026-10-07)
 
 
+### Bug Fixes
+
+* **cli:** route `__complete` ahead of cyclopts 5's reserved handler, so `app(["__complete", ...])` answers from the project's handler again; usage errors now exit 2 ([#39](https://github.com/yo61/python-template/issues/39)) ([e939751](https://github.com/yo61/python-template/commit/e939751919cd10f9cd453e5fd60d5f788cc35543))
+
+
 ### Dependencies
 
 * bump cyclopts from 4.25.2 to 4.25.3 in the uv-production group ([#31](https://github.com/yo61/python-template/issues/31)) ([1f0d080](https://github.com/yo61/python-template/commit/1f0d08036ed4f442e94370c3569f437618790f07))
