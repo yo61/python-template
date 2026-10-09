@@ -3,7 +3,7 @@ uv = "0.12"
 # Exact, matching CI's TASK_VERSION, NODE_VERSION and PNPM_VERSION; Renovate moves each pair
 # together. uv is a range on purpose: see required-version in pyproject.toml.
 task = "3.54.0"
-node = "22.23.3"
+node = "24.21.0"
 pnpm = "11.28.3"
 
 [env]
