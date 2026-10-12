@@ -37,7 +37,7 @@ jobs:
         env:
           SKIP: zizmor
           # renovate: datasource=github-releases depName=j178/prek extractVersion=^v(?<version>.+)$
-          PREK_VERSION: 0.5.4
+          PREK_VERSION: 0.5.5
         with:
           prek-version: ${{ env.PREK_VERSION }}
 
@@ -152,7 +152,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           # renovate: datasource=github-releases depName=j178/prek extractVersion=^v(?<version>.+)$
-          PREK_VERSION: 0.5.4
+          PREK_VERSION: 0.5.5
         with:
           prek-version: ${{ env.PREK_VERSION }}
           extra-args: zizmor --all-files
