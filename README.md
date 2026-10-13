@@ -140,7 +140,7 @@ tightened.
 
 ## CI
 
-Every pull request runs lint, the pytest matrix (Python 3.11 through 3.14),
+Every pull request runs lint, the pytest matrix (Python 3.11 through 3.15),
 and a bootstrap smoke test that generates two projects from the template
 (one flat, one with DDD layering) and runs the full gate on each, catching
 any file that uses a placeholder the bootstrap script doesn't know about.
