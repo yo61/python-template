@@ -65,6 +65,7 @@ updates:
     # enough that a 7-day window broke most runs. 1 day still enforces the
     # 24-hour publish delay the house standard asks for.
     cooldown:
+      # jactionlint ignore=dependabot-cooldown
       default-days: 1
     commit-message:
       prefix: "chore(deps)"
