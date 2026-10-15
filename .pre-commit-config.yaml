@@ -74,12 +74,10 @@ repos:
           # Exact: Renovate's regex manager in renovate.json5 moves it; Dependabot moves rev.
           - "@commitlint/config-conventional@21.2.3"
 
-  # The maintained fork: upstream rhysd/actionlint stopped at 1.7.12, which rejects the
-  # ubuntu-26.04 runner label.
-  - repo: https://github.com/kjanat/actionlint
-    rev: 08bb2c4f0d039744455b87aef1c647fb8b66d37b  # frozen: v1.17.0
+  - repo: https://github.com/jdx/jactionlint
+    rev: 1027f0a131ab98bc7e191d995bfa15dbed5bbf8f  # frozen: v2.2.0
     hooks:
-      - id: actionlint
+      - id: jactionlint
 
   - repo: https://github.com/woodruffw/zizmor-pre-commit
     rev: fa412071e4f5d44d44f9e365f4676f9df92456a2  # frozen: v1.30.1
