@@ -3,7 +3,7 @@ title: Why CI is shaped this way
 description: The aggregator job, running hooks instead of restating them, and the job that stops the template rotting
 ---
 
-`.github/workflows/ci.yaml` has six jobs where three would do. Each of the
+`.github/workflows/ci.yaml` has five jobs where three would do. Each of the
 extra ones exists to close a specific failure that a simpler shape allows.
 
 ## CI runs the hooks rather than restating them
@@ -20,13 +20,6 @@ because both files look maintained. Running the hook file directly means
 
 `uv sync --locked` runs before the hook action because the `ruff`, `ty` and
 `pytest` hooks are `uv run --no-sync`, so they need the virtualenv to exist.
-
-## `zizmor` gets its own job
-
-The `lint` job sets `SKIP: zizmor`, and a separate `zizmor` job runs it. That
-looks redundant, and it is deliberate: the branch ruleset requires a check
-named `zizmor`, and a hook running inside `lint` produces no such check. The
-skip stops it running twice.
 
 ## The `test` job runs nothing
 
