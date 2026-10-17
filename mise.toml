@@ -4,7 +4,7 @@ uv = "0.12"
 # together. uv is a range on purpose: see required-version in pyproject.toml.
 task = "3.54.0"
 node = "24.21.0"
-pnpm = "12.11.0"
+pnpm = "12.12.0"
 
 [env]
 # Stop ad-hoc `uv run` from rewriting uv.lock as a side effect. The lockfile
