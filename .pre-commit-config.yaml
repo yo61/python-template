@@ -72,7 +72,7 @@ repos:
         stages: [commit-msg]
         additional_dependencies:
           # Exact: Renovate's regex manager in renovate.json5 moves it; Dependabot moves rev.
-          - "@commitlint/config-conventional@21.2.3"
+          - "@commitlint/config-conventional@21.2.4"
 
   - repo: https://github.com/jdx/jactionlint
     rev: 1027f0a131ab98bc7e191d995bfa15dbed5bbf8f  # frozen: v2.2.0
