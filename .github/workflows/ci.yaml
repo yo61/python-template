@@ -90,7 +90,7 @@ jobs:
       - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115  # v6.1.1
         env:
           # renovate: datasource=npm depName=pnpm
-          PNPM_VERSION: 12.18.0
+          PNPM_VERSION: 12.19.0
         with:
           version: ${{ env.PNPM_VERSION }}
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1  # v7.1.0
@@ -142,6 +142,6 @@ jobs:
       # Dependabot's markdown-link bodies fail body-max-line-length on it.
       # This fork runs commitlint v21 on node 26 and pins its runtime image by
       # digest, so pinning by SHA here cannot be worked around.
-      - uses: yo61/commitlint-github-action@80080805b3e239db44e1f181dfdb74824bdd2c91  # v7.1.0
+      - uses: yo61/commitlint-github-action@a7939ec6b16df871abcc3de81d1871da247f78a9  # v7.1.1
         with:
           configFile: commitlint.config.mjs
