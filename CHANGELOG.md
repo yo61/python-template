@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.8](https://github.com/yo61/python-template/compare/v0.1.7...v0.1.8) (2026-11-19)
+
+
+### Dependencies
+
+* bump cyclopts from 5.3.3 to 5.4.0 in the uv-production group ([#117](https://github.com/yo61/python-template/issues/117)) ([7bd7611](https://github.com/yo61/python-template/commit/7bd7611ecb6afcefc509142f6766ea7bb4dc7d68))
+
 ## [0.1.7](https://github.com/yo61/python-template/compare/v0.1.6...v0.1.7) (2026-11-10)
 
 
